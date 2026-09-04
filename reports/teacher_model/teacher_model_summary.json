@@ -1,0 +1,23 @@
+{
+  "n_schools": 296,
+  "n_small_schools": 92,
+  "cv_folds": 50,
+  "class_only_mae": 1.7846935221700462,
+  "class_only_rmse": 2.338525333361841,
+  "class_only_r2": 0.9802636030978894,
+  "best_model": "학급수 선형",
+  "best_model_mae": 1.7846935221700462,
+  "best_improvement_vs_class_only": 0.0,
+  "ridge_mae": 1.849119511452638,
+  "class_model_intercept": 4.260031589573636,
+  "class_model_slope": 1.3276399234497231,
+  "small_school_class_model_mae": 1.1218857879895618,
+  "other_school_class_model_mae": 2.0818890829078787,
+  "class_residual_q10": -2.7959178500211834,
+  "class_residual_q90": 2.8556253305917387,
+  "scenario_count": 1481,
+  "scenario_median_change_vs_b": 8.00382814481118,
+  "scenario_median_saving_vs_current_sum": 9.272571089686053,
+  "decision": "보조 지표로 제한적 가치",
+  "official_staffing_formula": false
+}
