@@ -19,6 +19,8 @@ def run_scenario(
     a_code: str,
     b_code: str,
     spacing_m: float = 250.0,
+    accessibility_summary: dict[str, Any] | None = None,
+    accessibility_points: gpd.GeoDataFrame | None = None,
 ) -> tuple[dict[str, Any], gpd.GeoDataFrame]:
     a_code, b_code = str(a_code), str(b_code)
     pairs = candidate_pairs.copy()
@@ -29,7 +31,11 @@ def run_scenario(
         raise ValueError("선택한 A→B 조합은 3km 후보 목록의 유일한 시나리오가 아닙니다.")
     pair = selected.iloc[0]
     resource = simulate_resource_change(master, a_code, b_code)
-    accessibility, grid = simulate_accessibility(catchments, school_points, a_code, b_code, spacing_m)
+    if accessibility_summary is None or accessibility_points is None:
+        accessibility, grid = simulate_accessibility(catchments, school_points, a_code, b_code, spacing_m)
+    else:
+        accessibility = accessibility_summary
+        grid = accessibility_points
     result = {
         "pair": {
             "distance_km": float(pair["학교간직선거리_km"]),
@@ -40,4 +46,3 @@ def run_scenario(
         "accessibility": accessibility,
     }
     return result, grid
-

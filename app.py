@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
+from src.accessibility_simulator import build_candidate_sample, simulate_accessibility_for_candidates
 from src.candidate_generator import PAIR_A_CODE, PAIR_B_CODE
 from src.config import PROCESSED_DIR
 from src.data_loader import load_bundle
@@ -35,6 +36,24 @@ def get_resource_scenarios(
 ) -> pd.DataFrame:
     del teacher_model_version
     return build_resource_scenario_table(master, candidate_pairs)
+
+
+@st.cache_data(show_spinner=False)
+def get_accessibility_scenarios(
+    a_code: str,
+    candidate_codes: tuple[str, ...],
+    student_count: int,
+    _catchments: gpd.GeoDataFrame,
+    _school_points: gpd.GeoDataFrame,
+) -> tuple[pd.DataFrame, gpd.GeoDataFrame]:
+    """통합 대상학교 한 곳의 모든 후보를 한 번에 계산하고 학교 단위로 캐시한다."""
+    return simulate_accessibility_for_candidates(
+        _catchments,
+        _school_points,
+        a_code,
+        candidate_codes,
+        student_count,
+    )
 
 
 def format_number(value, digits: int = 1, suffix: str = "") -> str:
@@ -569,36 +588,35 @@ def accessibility_figure(bundle, grid, a_code: str, b_code: str) -> go.Figure:
         b_point = b_point.iloc[0]
     names = bundle.master.set_index(KEDI)[SCHOOL_NAME]
     a_name, b_name = names.loc[a_code], names.loc[b_code]
-    max_abs_change = max(
-        float(grid["추가접근거리_km"].abs().max()),
-        0.01,
-    )
     figure = go.Figure()
     add_polygon_boundary(figure, zone_wgs84)
-    figure.add_trace(
-        go.Scattermap(
-            lon=grid_wgs84.geometry.x,
-            lat=grid_wgs84.geometry.y,
-            mode="markers",
-            marker=dict(
-                size=9,
-                color=grid["추가접근거리_km"],
-                colorscale=[[0, "#2166AC"], [0.5, "#F7F7F7"], [1, "#B2182B"]],
-                cmin=-max_abs_change,
-                cmax=max_abs_change,
-                cmid=0,
-                colorbar=dict(title="추가 접근거리<br>(km)<br>− 가까워짐 / + 멀어짐"),
-            ),
-            text=[
-                f"현재 거리 {current:.2f}km<br>통합 후 거리 {after:.2f}km<br>증감 {added:+.2f}km"
-                for current, after, added in zip(
-                    grid["현재거리_km"], grid["통합후거리_km"], grid["추가접근거리_km"]
-                )
-            ],
-            hovertemplate="%{text}<extra>격자</extra>",
-            name="250m 격자",
+    point_groups = [
+        ("가까워지는 위치", grid["추가접근거리_km"].le(0), "#2166AC"),
+        ("멀어지는 위치", grid["추가접근거리_km"].gt(0), "#B2182B"),
+    ]
+    for group_name, group_mask, group_color in point_groups:
+        group = grid.loc[group_mask]
+        if group.empty:
+            continue
+        group_wgs84 = grid_wgs84.loc[group_mask]
+        figure.add_trace(
+            go.Scattermap(
+                lon=group_wgs84.geometry.x,
+                lat=group_wgs84.geometry.y,
+                mode="markers",
+                marker=dict(size=9, color=group_color),
+                text=[
+                    f"현재 거리 {current:.2f}km<br>통합 후 거리 {after:.2f}km<br>증감 {added:+.2f}km"
+                    for current, after, added in zip(
+                        group["현재거리_km"],
+                        group["통합후거리_km"],
+                        group["추가접근거리_km"],
+                    )
+                ],
+                hovertemplate="%{text}<extra></extra>",
+                name=group_name,
+            )
         )
-    )
     figure.add_trace(
         go.Scattermap(
             lon=[a_point.x],
@@ -863,6 +881,18 @@ else:
 if b_code is None:
     st.info("학생을 받을 수용학교를 선택하면 교육자원과 교육접근성 변화가 아래에 표시됩니다.")
 else:
+    candidate_codes = tuple(a_pairs[PAIR_B_CODE].astype(str))
+    accessibility_scenarios, accessibility_sample = get_accessibility_scenarios(
+        a_code,
+        candidate_codes,
+        int(a_school[STUDENTS]),
+        bundle.catchments,
+        bundle.school_points,
+    )
+    selected_accessibility = accessibility_scenarios.loc[
+        accessibility_scenarios[PAIR_B_CODE].eq(b_code)
+    ].iloc[0].to_dict()
+    sample_points = build_candidate_sample(accessibility_sample, bundle.school_points, b_code)
     scenario, grid = run_scenario(
         bundle.master,
         bundle.candidate_pairs,
@@ -870,6 +900,8 @@ else:
         bundle.catchments,
         a_code,
         b_code,
+        accessibility_summary=selected_accessibility,
+        accessibility_points=sample_points,
     )
     resource = scenario["resource"]
     access = scenario["accessibility"]
@@ -879,7 +911,7 @@ else:
     hero[0].metric("이동 학생", f"{resource['moving_students']:,}명")
     hero[1].metric("학교 간 직선거리", f"{scenario['pair']['distance_km']:.2f}km")
     hero[2].metric("평균 추가 접근거리", f"{access['added_mean_km']:+.2f}km")
-    hero[3].metric("접근성 악화 격자 비율", f"{access['worsened_pct']:.1f}%")
+    hero[3].metric("접근성 악화 표본 비율", f"{access['worsened_pct']:.1f}%")
 
     resource_tab, access_tab = st.tabs(["학교 안 교육자원", "학교 밖 교육접근성"])
     with resource_tab:
@@ -996,7 +1028,10 @@ else:
         access_cols[2].metric("추가 접근거리 중앙값", f"{access['added_median_km']:+.2f}km")
         access_cols[3].metric("추가 접근거리 최댓값", f"{access['added_max_km']:+.2f}km")
         st.plotly_chart(accessibility_figure(bundle, grid, a_code, b_code), width="stretch")
-        st.caption(f"격자 {access['grid_point_count']}개 · {access['assumption']}")
+        st.caption(
+            f"지도 표본 {access['sample_point_count']:,}개 · 몬테카를로 {access['iterations']:,}회 반복 · "
+            f"총 {access['total_draw_count']:,}개 가상점 계산 · {access['assumption']}"
+        )
 
 if not a_pairs.empty:
     with st.expander(f"{a_school[SCHOOL_NAME]}의 모든 후보 수치 비교", expanded=False):
@@ -1032,12 +1067,13 @@ with st.expander("데이터 기준과 해석 한계", expanded=False):
 
         #### 접근성 지도 읽는 법
 
-        - 각 점은 통합 대상학교의 기존 통학구역 안에 만든 **250m 균일격자**입니다.
+        - 각 점은 통합 대상학교의 기존 통학구역 안에 재학생 수만큼 만든 **대표 가상 위치 표본**입니다.
+        - 상단 거리 지표는 같은 수의 가상점을 반복 생성해 평균값이 안정될 때까지 계산한 몬테카를로 결과입니다.
         - 추가 접근거리는 `선택한 수용학교까지 거리 - 현재 학교까지 거리`입니다.
         - 값이 **음수·파란색**이면 가까워지고, **양수·빨간색**이면 멀어지는 지점입니다.
         - **3km**는 수용학교 후보 탐색범위이고, **1.5km**는 지도 참고선입니다. 통합 적합성을 판정하는 기준이 아닙니다.
-        - 거리는 도로망·경사·통학수단을 반영하지 않은 학교점 간 또는 격자점 간 **직선거리**입니다.
-        - 모든 격자점을 동일하게 계산하므로 실제 학생 거주분포나 실제 평균 통학거리를 뜻하지 않습니다.
+        - 거리는 도로망·경사·통학수단을 반영하지 않은 학교점 간 또는 표본점 간 **직선거리**입니다.
+        - 통학구역 내부를 균일하게 표본화하므로 실제 학생 거주분포나 실제 평균 통학거리를 뜻하지 않습니다.
 
         #### 해석 한계
 
