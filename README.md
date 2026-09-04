@@ -9,7 +9,7 @@
 - GIS 사용 가능: 전체 294개교, 소규모 90개교
 - 후보 규칙: A 학교점에서 직선거리 3km 이하인 다른 초등학교 B
 - 후보쌍: 1,481건, 후보가 있는 A 83개교, 없는 A 7개교
-- 교육자원 가정: A 학생 전원이 이동하고 일반학급은 2025 부산 학생배치지표 25명으로 학년별 재편성, 교원·교실·교지는 B의 현재 규모 유지
+- 교육자원 가정: A 학생 전원이 이동하고 일반학급은 2025 부산 학생배치지표 25명으로 학년별 재편성, 교실·교지는 B의 현재 규모 유지. 교원은 B 현재 현원·A+B 현재 현원 합·학급 수 회귀 참고값을 분리 표시
 - 접근성 가정: A 통학구역의 250m 균일격자에서 A/B 학교점까지 직선거리 비교
 
 ## 대시보드 사용 흐름
@@ -57,6 +57,7 @@ src/candidate_generator.py     3km 후보쌍 생성
 src/class_formation.py         25명 기준 학년별 일반학급 재편성
 src/resource_simulator.py      재편성 학급+고정자원 Before/After 계산
 src/resource_benchmark.py      후보군·전체 시나리오 상대 백분위 계산
+src/teacher_model.py           학급 수 기반 교원 관측패턴 참고모형
 src/accessibility_simulator.py 250m 격자 직선거리 변화
 src/scenario_engine.py         후보 검증과 두 분석의 결합
 scripts/build_assets.py        원자료 → 배포 데이터

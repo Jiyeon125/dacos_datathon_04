@@ -23,6 +23,12 @@ def test_resource_scenario_table_matches_single_scenario_engine():
     assert row["classes_delta_vs_current_sum"] == pytest.approx(single["classes_delta_vs_current_sum"])
     assert row["class_size_after"] == pytest.approx(single["class_size_after"])
     assert row["students_per_teacher_after"] == pytest.approx(single["students_per_teacher_after"])
+    assert row["teacher_current_b"] == pytest.approx(single["teacher_current_b"])
+    assert row["teacher_current_sum"] == pytest.approx(single["teacher_current_sum"])
+    assert row["teacher_model_input_classes"] == pytest.approx(single["teacher_model_input_classes"])
+    assert row["teacher_reference_estimate"] == pytest.approx(single["teacher_reference_estimate"])
+    assert row["teacher_reference_range_low"] == pytest.approx(single["teacher_reference_range_low"])
+    assert row["teacher_reference_range_high"] == pytest.approx(single["teacher_reference_range_high"])
     assert row["students_per_classroom_after"] == pytest.approx(single["students_per_classroom_after"])
     assert row["land_per_student_after"] == pytest.approx(single["land_per_student_after"])
 

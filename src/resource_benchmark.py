@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.candidate_generator import PAIR_A_CODE, PAIR_B_CODE
-from src.class_formation import GRADES, general_class_column, general_student_column
+from src.class_formation import GRADES, general_class_column, general_student_column, special_class_column
 from src.config import BUSAN_ELEMENTARY_CLASS_FORMATION_2025
 from src.schema import (
     CLASSROOMS,
@@ -17,6 +17,7 @@ from src.schema import (
     TEACHERS,
     normalize_kedi,
 )
+from src.teacher_model import TEACHER_REFERENCE_MODEL
 
 
 RADAR_METRICS = (
@@ -80,6 +81,7 @@ def build_resource_scenario_table(master: pd.DataFrame, candidate_pairs: pd.Data
     classes_before = pd.Series(0.0, index=pairs.index)
     classes_current_sum = pd.Series(0.0, index=pairs.index)
     classes_after = pd.Series(0.0, index=pairs.index)
+    special_classes_current_sum = pd.Series(0.0, index=pairs.index)
     for grade in GRADES:
         student_column = general_student_column(grade)
         class_column = general_class_column(grade)
@@ -92,9 +94,19 @@ def build_resource_scenario_table(master: pd.DataFrame, candidate_pairs: pd.Data
         classes_before += b_grade_classes
         classes_current_sum += a_grade_classes + b_grade_classes
         classes_after += np.ceil(combined_grade_students / capacity).where(combined_grade_students.gt(0), 0)
+        special_column = special_class_column(grade)
+        special_classes_current_sum += pd.to_numeric(
+            pairs[PAIR_A_CODE].map(lookup[special_column]), errors="coerce"
+        ) + pd.to_numeric(pairs[PAIR_B_CODE].map(lookup[special_column]), errors="coerce")
     b_teachers = pairs[PAIR_B_CODE].map(lookup[TEACHERS])
+    a_teachers = pairs[PAIR_A_CODE].map(lookup[TEACHERS])
     b_classrooms = pairs[PAIR_B_CODE].map(lookup[CLASSROOMS])
     b_land = pairs[PAIR_B_CODE].map(lookup[LAND_AREA])
+    teacher_model_input_classes = classes_after + special_classes_current_sum
+    teacher_reference_estimate = (
+        TEACHER_REFERENCE_MODEL.intercept
+        + TEACHER_REFERENCE_MODEL.class_coefficient * teacher_model_input_classes
+    )
 
     result = pd.DataFrame(
         {
@@ -113,6 +125,16 @@ def build_resource_scenario_table(master: pd.DataFrame, candidate_pairs: pd.Data
             "classes_delta_vs_current_sum": classes_after - classes_current_sum,
             "class_size_after": _safe_divide(general_students_after, classes_after),
             "students_per_teacher_after": _safe_divide(after_students, b_teachers),
+            "teacher_current_b": b_teachers,
+            "teacher_current_sum": a_teachers + b_teachers,
+            "teacher_model_input_classes": teacher_model_input_classes,
+            "teacher_reference_estimate": teacher_reference_estimate,
+            "teacher_reference_range_low": (
+                teacher_reference_estimate + TEACHER_REFERENCE_MODEL.residual_q10
+            ).clip(lower=0),
+            "teacher_reference_range_high": (
+                teacher_reference_estimate + TEACHER_REFERENCE_MODEL.residual_q90
+            ),
             "students_per_classroom_after": _safe_divide(after_students, b_classrooms),
             "land_per_student_after": _safe_divide(b_land, after_students),
         }

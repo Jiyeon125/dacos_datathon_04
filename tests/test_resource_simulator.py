@@ -59,6 +59,12 @@ def test_grade_based_class_formation_and_fixed_other_resources():
     assert round(result["class_size_before"], 1) == 21.9
     assert round(result["class_size_after"], 1) == 21.5
     assert round(result["students_per_teacher_after"], 1) == 15.9
+    assert result["teacher_current_b"] == 27
+    assert result["teacher_current_sum"] == 39
+    assert result["teacher_model_input_classes"] == 20
+    assert round(result["teacher_reference_estimate"], 1) == 30.8
+    assert result["teacher_reference_range_low"] < result["teacher_reference_estimate"]
+    assert result["teacher_reference_range_high"] > result["teacher_reference_estimate"]
     assert round(result["students_per_classroom_after"], 1) == 21.5
     assert round(result["land_per_student_after"], 1) == 26.0
     assert [row["required_general_classes"] for row in result["grade_class_plan"]] == [3, 3, 3, 3, 4, 4]

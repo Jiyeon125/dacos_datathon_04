@@ -16,6 +16,7 @@ from src.resource_benchmark import build_resource_scenario_table, comparative_re
 from src.resource_simulator import grade_class_comparison_table, resource_comparison_table
 from src.scenario_engine import run_scenario
 from src.schema import CLASS_SIZE, DISTRICT, KEDI, SCHOOL_NAME, SMALL_FLAG, STUDENTS
+from src.teacher_model import TEACHER_REFERENCE_MODEL
 
 
 st.set_page_config(page_title="학교 통합 교육여건 시뮬레이터", page_icon="🏫", layout="wide")
@@ -27,7 +28,12 @@ def get_bundle(data_dir: str):
 
 
 @st.cache_data(show_spinner=False)
-def get_resource_scenarios(master: pd.DataFrame, candidate_pairs: pd.DataFrame) -> pd.DataFrame:
+def get_resource_scenarios(
+    master: pd.DataFrame,
+    candidate_pairs: pd.DataFrame,
+    teacher_model_version: str,
+) -> pd.DataFrame:
+    del teacher_model_version
     return build_resource_scenario_table(master, candidate_pairs)
 
 
@@ -249,6 +255,51 @@ def resource_change_figure(resource: dict) -> go.Figure:
                 row=row,
                 col=column,
             )
+    return figure
+
+
+def teacher_reference_figure(resource: dict) -> go.Figure:
+    labels = ["수용학교 현재", "두 학교 현재 합", "회귀 참고값"]
+    values = [
+        resource["teacher_current_b"],
+        resource["teacher_current_sum"],
+        resource["teacher_reference_estimate"],
+    ]
+    estimate = float(resource["teacher_reference_estimate"])
+    range_low = float(resource["teacher_reference_range_low"])
+    range_high = float(resource["teacher_reference_range_high"])
+    figure = go.Figure(
+        go.Bar(
+            x=values,
+            y=labels,
+            orientation="h",
+            marker_color=["#4878CF", "#8A8F98", "#F28E2B"],
+            text=[f"{value:,.0f}명" if index < 2 else f"{value:,.1f}명" for index, value in enumerate(values)],
+            textposition="outside",
+            error_x=dict(
+                type="data",
+                symmetric=False,
+                array=[0, 0, range_high - estimate],
+                arrayminus=[0, 0, estimate - range_low],
+                color="#B85D12",
+                thickness=2,
+                width=6,
+            ),
+            customdata=["현재 관측값", "현재 관측값 합", "2025년 학급 수-교원 수 관측패턴"],
+            hovertemplate="%{y}: %{x:.1f}명<br>%{customdata}<extra></extra>",
+        )
+    )
+    figure.update_layout(
+        title="교원 현원과 회귀 참고값",
+        height=300,
+        margin=dict(l=30, r=60, t=55, b=35),
+        xaxis_title="교원 수(명)",
+        xaxis=dict(rangemode="tozero"),
+        yaxis=dict(autorange="reversed"),
+        showlegend=False,
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
     return figure
 
 
@@ -595,6 +646,10 @@ def scenario_comparison(resource_scenarios: pd.DataFrame, a_code: str, b_code: s
     comparison["선택"] = comparison[PAIR_B_CODE].map(lambda code: "●" if code == b_code else "")
     comparison["28명 참고선 이상"] = comparison["class_size_after"].ge(28).map({True: "예", False: "아니오"})
     comparison["선택순서"] = comparison[PAIR_B_CODE].ne(b_code).astype(int) if b_code is not None else 0
+    comparison["회귀 참고범위(명)"] = comparison.apply(
+        lambda row: f"{row['teacher_reference_range_low']:.1f}~{row['teacher_reference_range_high']:.1f}",
+        axis=1,
+    )
     comparison = comparison.sort_values(["선택순서", "학교간직선거리_km", "후보학교명"])
     comparison = comparison.rename(
         columns={
@@ -603,6 +658,7 @@ def scenario_comparison(resource_scenarios: pd.DataFrame, a_code: str, b_code: s
             "classes_after": "필요 일반학급 수(학급)",
             "class_size_after": "통합 후 일반학급당 학생 수(명)",
             "students_per_teacher_after": "통합 후 교원 1인당 학생 수(명)",
+            "teacher_reference_estimate": "회귀 참고 교원(명)",
             "students_per_classroom_after": "통합 후 학생/교실(명)",
             "land_per_student_after": "통합 후 학생 1인당 교지면적(㎡)",
         }
@@ -614,12 +670,15 @@ def scenario_comparison(resource_scenarios: pd.DataFrame, a_code: str, b_code: s
         "필요 일반학급 수(학급)",
         "통합 후 일반학급당 학생 수(명)",
         "통합 후 교원 1인당 학생 수(명)",
+        "회귀 참고 교원(명)",
+        "회귀 참고범위(명)",
         "통합 후 학생/교실(명)",
         "통합 후 학생 1인당 교지면적(㎡)",
         "28명 참고선 이상",
     ]
     for column in columns[2:-1]:
-        comparison[column] = comparison[column].round(2)
+        if column != "회귀 참고범위(명)":
+            comparison[column] = comparison[column].round(2)
     return comparison[columns].reset_index(drop=True)
 
 
@@ -667,7 +726,11 @@ except Exception as error:
     st.exception(error)
     st.stop()
 
-resource_scenarios = get_resource_scenarios(bundle.master, bundle.candidate_pairs)
+resource_scenarios = get_resource_scenarios(
+    bundle.master,
+    bundle.candidate_pairs,
+    TEACHER_REFERENCE_MODEL.version,
+)
 
 counts = bundle.manifest["row_counts"]
 st.title("학교 통합, 교육여건은 어떻게 달라질까?")
@@ -858,6 +921,29 @@ else:
                 f"{resource['general_classroom_gap']:,}개 많습니다. 교실 전환·증설 가능성을 별도로 검토해야 합니다."
             )
 
+        st.markdown("#### 교원 현원과 회귀 참고값")
+        teacher_cards = st.columns(4)
+        teacher_cards[0].metric("수용학교 현재 교원", f"{resource['teacher_current_b']:,}명")
+        teacher_cards[1].metric("두 학교 현재 교원 합", f"{resource['teacher_current_sum']:,}명")
+        teacher_cards[2].metric(
+            "회귀모델 참고값",
+            f"{resource['teacher_reference_estimate']:.1f}명",
+            delta=f"수용학교 현재 대비 {resource['teacher_reference_delta_vs_b']:+.1f}명",
+            delta_color="off",
+        )
+        teacher_cards[3].metric(
+            "관측자료 참고범위",
+            f"{resource['teacher_reference_range_low']:.1f}~{resource['teacher_reference_range_high']:.1f}명",
+        )
+        st.plotly_chart(teacher_reference_figure(resource), width="stretch")
+        st.caption(
+            f"회귀 입력은 재편성 일반학급 {resource['classes_after']:,}학급 + 두 학교 현재 특수학급 "
+            f"{resource['special_classes_current_sum']:,}학급 = 총 {resource['teacher_model_input_classes']:,}학급입니다. "
+            f"2025년 부산 공립 운영 본교 초등학교 {resource['teacher_reference_training_school_count']:,}개 관측값에서 "
+            f"학급 수만으로 계산했으며, 반복 교차검증 평균 오차는 {resource['teacher_reference_validation_mae']:.2f}명입니다. "
+            "오렌지 오차막대는 관측 잔차의 10~90백분위 범위입니다. 공식 정원이나 통합 후 확정 인원이 아닙니다."
+        )
+
         st.markdown("#### 학년별 학생 수 변화")
         st.plotly_chart(grade_structure_figure(bundle.master, a_code, b_code), width="stretch")
         st.caption(
@@ -917,7 +1003,7 @@ if not a_pairs.empty:
         st.dataframe(scenario_comparison(resource_scenarios, a_code, b_code), hide_index=True, width="stretch")
         st.caption(
             "● 표시는 현재 선택한 수용학교입니다. 일반학급은 학년별 일반학생을 25명 기준으로 재편성하고, "
-            "교원·교실·교지는 수용학교의 현재 자원을 유지해 계산했습니다."
+            "교원 부담·교실·교지는 수용학교의 현재 자원을 유지해 계산했습니다. 회귀 교원은 현재 배치 패턴 참고값입니다."
         )
 
 with st.expander("부산 전체 현황 EDA", expanded=False):
@@ -937,9 +1023,11 @@ with st.expander("데이터 기준과 해석 한계", expanded=False):
         - **통합 전/후:** 통합 전은 수용학교의 현재 상태, 통합 후는 통합 대상학교 학생이 수용학교로 이동한 상태입니다.
         - **일반학급 수:** 학년별로 두 학교의 일반학생을 합한 뒤 `올림(일반학생 ÷ 25)`하여 합산합니다. 25명은 2025년 부산 초등학교 학생배치지표입니다.
         - **일반학급당 학생 수:** 4월 일반학생 수를 4월 일반학급 수로 나눕니다. 특수학생·특수학급은 이 계산에서 분리합니다.
-        - **교원 1인당 학생 수:** 10월 전체 학생 수를 수용학교의 10월 교원 현원으로 나눕니다.
+        - **교원 1인당 학생 수:** 10월 전체 학생 수를 수용학교의 10월 교원 현원으로 나눈 스트레스 테스트입니다.
+        - **회귀 교원 참고값:** `4.260 + 1.328 × 통합 후 전체학급 수`입니다. 전체학급 입력은 25명 기준 재편성 일반학급과 두 학교의 현재 특수학급 합입니다.
+        - 회귀모델은 2025년 부산 공립 운영 본교 초등학교 296개의 관측 배치 패턴이며, 반복 교차검증 MAE는 1.78명입니다. 참고범위는 잔차의 10~90백분위로 계산합니다.
         - **학생/교실·학생 1인당 교지면적:** 10월 전체 학생과 4월 수용학교 시설을 결합한 시설 부담 지표입니다.
-        - 교원·교실·교지는 통합 후에도 수용학교의 현재 규모를 유지한다고 가정합니다. 실제 재배치나 증설을 예측한 값이 아닙니다.
+        - 교원 부담·교실·교지는 통합 후에도 수용학교의 현재 규모를 유지한다고 가정합니다. 회귀값도 공식 정원이나 실제 재배치를 예측한 값이 아닙니다.
         - **28명 선:** 과밀학급 참고선이며, 학급을 편성하는 25명 기준이나 통합 적합성 판정선이 아닙니다.
 
         #### 접근성 지도 읽는 법

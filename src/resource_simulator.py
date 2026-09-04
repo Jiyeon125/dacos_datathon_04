@@ -16,6 +16,7 @@ from src.schema import (
     TEACHERS,
     normalize_kedi,
 )
+from src.teacher_model import predict_teacher_reference
 
 
 def safe_ratio(numerator: Any, denominator: Any) -> float | None:
@@ -31,7 +32,7 @@ def _delta(before: float | None, after: float | None) -> float | None:
 
 
 def simulate_resource_change(master: pd.DataFrame, a_code: str, b_code: str) -> dict[str, Any]:
-    """A 학생이 B로 이동할 때 학급은 재편성하고 나머지 자원은 B에 고정한다."""
+    """A 학생이 B로 이동할 때 학급을 재편성하고 교원 관측패턴 참고값을 계산한다."""
     lookup = master.assign(**{KEDI: normalize_kedi(master[KEDI])}).set_index(KEDI)
     a_code, b_code = str(a_code), str(b_code)
     if a_code not in lookup.index or b_code not in lookup.index:
@@ -50,6 +51,10 @@ def simulate_resource_change(master: pd.DataFrame, a_code: str, b_code: str) -> 
     class_after = safe_ratio(formation["general_students_after"], classes_after)
     teacher_before = safe_ratio(before_students, b[TEACHERS])
     teacher_after = safe_ratio(after_students, b[TEACHERS])
+    teacher_current_b = int(b[TEACHERS])
+    teacher_current_sum = int(a[TEACHERS] + b[TEACHERS])
+    teacher_model_input_classes = int(classes_after + formation["special_classes_current_sum"])
+    teacher_reference = predict_teacher_reference(teacher_model_input_classes)
     classroom_before = safe_ratio(before_students, b[CLASSROOMS])
     classroom_after = safe_ratio(after_students, b[CLASSROOMS])
     land_before = safe_ratio(b[LAND_AREA], before_students)
@@ -75,6 +80,19 @@ def simulate_resource_change(master: pd.DataFrame, a_code: str, b_code: str) -> 
         "students_per_teacher_before": teacher_before,
         "students_per_teacher_after": teacher_after,
         "students_per_teacher_delta": _delta(teacher_before, teacher_after),
+        "teacher_current_b": teacher_current_b,
+        "teacher_current_sum": teacher_current_sum,
+        "teacher_model_input_classes": teacher_model_input_classes,
+        "teacher_reference_estimate": teacher_reference["estimate"],
+        "teacher_reference_range_low": teacher_reference["range_low"],
+        "teacher_reference_range_high": teacher_reference["range_high"],
+        "teacher_reference_delta_vs_b": teacher_reference["estimate"] - teacher_current_b,
+        "teacher_reference_delta_vs_current_sum": teacher_reference["estimate"] - teacher_current_sum,
+        "teacher_reference_validation_mae": teacher_reference["validation_mae"],
+        "teacher_reference_validation_r2": teacher_reference["validation_r2"],
+        "teacher_reference_training_school_count": teacher_reference["training_school_count"],
+        "teacher_reference_date": teacher_reference["reference_date"],
+        "teacher_reference_usage_label": teacher_reference["usage_label"],
         "students_per_classroom_before": classroom_before,
         "students_per_classroom_after": classroom_after,
         "students_per_classroom_delta": _delta(classroom_before, classroom_after),
@@ -98,7 +116,7 @@ def simulate_resource_change(master: pd.DataFrame, a_code: str, b_code: str) -> 
         "general_classroom_shortage": bool(classroom_gap is not None and classroom_gap > 0),
         "assumption": (
             "2025년 4월 학년별 일반학생을 합산해 부산 초등 학생배치지표 25명으로 일반학급을 재편성하고, "
-            "교원·교실·교지는 수용학교의 현재 규모를 유지"
+            "교원 부담·교실·교지는 수용학교의 현재 규모를 유지하며 교원 회귀값은 별도 참고값으로만 제시"
         ),
     }
 
