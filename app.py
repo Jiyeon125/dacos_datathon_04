@@ -611,7 +611,7 @@ else:
         if resource["overcrowded_28_after"] and not resource["overcrowded_28_before"]:
             st.warning("통합 후 학급당 학생 수가 28명 참고선을 새로 넘습니다.")
 
-        st.markdown("#### 교육자원 상대 비교")
+        st.markdown("#### 선택한 B학교의 교육자원 여유는 어느 정도일까?")
         same_a_profile, same_a_size = comparative_resource_profile(
             resource_scenarios,
             a_code,
@@ -629,7 +629,7 @@ else:
             st.plotly_chart(
                 resource_radar_figure(
                     same_a_profile,
-                    "같은 A학교 후보와 비교",
+                    "A학교 주변 3km 수용 후보와 비교",
                     same_a_size,
                     resource["b_name"],
                 ),
@@ -639,15 +639,15 @@ else:
             st.plotly_chart(
                 resource_radar_figure(
                     all_profile,
-                    "전체 후보 시나리오와 비교",
+                    "부산 전체 통합 시나리오와 비교",
                     all_size,
                     resource["b_name"],
                 ),
                 width="stretch",
             )
         st.caption(
-            "각 축은 비교집단 안의 지표별 상대 위치입니다. 높은 값은 학급·교원·교실 부담이 상대적으로 작거나 "
-            "학생 1인당 교지면적이 상대적으로 넓다는 뜻입니다. 네 축을 합산한 종합점수나 통합 추천 순위는 아닙니다."
+            "읽는 법: 주황색 선이 바깥쪽일수록 선택한 B학교가 해당 교육자원에서 비교 대상보다 상대적으로 "
+            "여유가 있습니다. 점선 50은 비교 대상의 중간 위치입니다. 네 축을 합산한 종합점수나 추천 순위는 아닙니다."
         )
     with access_tab:
         access_cols = st.columns(4)

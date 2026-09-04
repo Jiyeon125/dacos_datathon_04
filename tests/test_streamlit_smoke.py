@@ -20,7 +20,7 @@ def test_streamlit_default_scenario_renders_without_exception():
     app.selectbox[1].set_value("213021124").run(timeout=30)
     assert not app.exception
     assert "가남초등학교 → 가야초등학교" in app.subheader[0].value
-    assert any("교육자원 상대 비교" in item.value for item in app.markdown)
+    assert any("선택한 B학교의 교육자원 여유" in item.value for item in app.markdown)
 
 
 def test_streamlit_no_candidate_school_has_explicit_empty_state():
