@@ -38,6 +38,10 @@ uv run streamlit run app.py
 
 이미 `data/processed/`가 포함된 배포본은 원자료 없이 마지막 세 명령만 실행할 수 있습니다.
 
+## Streamlit Community Cloud
+
+저장소 루트의 `app.py`를 엔트리포인트로 배포합니다. 시크릿·환경변수는 필요 없습니다. Advanced 설정에서 Python 버전은 **3.12**로 고릅니다. 의존성은 `uv.lock`만 사용하므로 `requirements.txt`는 두지 않습니다.
+
 교원 회귀모델의 적용가치 검증 노트북과 결과표는 다음 명령으로 다시 생성합니다.
 
 ```bash
