@@ -42,6 +42,52 @@ def reset_receiver_selection() -> None:
     st.session_state.pop("pending_b", None)
 
 
+def grade_structure_figure(master: pd.DataFrame, a_code: str, b_code: str) -> go.Figure:
+    """선택한 두 학교와 단순 합산한 통합 후 학년별 학생 수를 비교한다."""
+    lookup = master.set_index(KEDI)
+    a_school = lookup.loc[a_code]
+    b_school = lookup.loc[b_code]
+    grades = list(range(1, 7))
+
+    def grade_values(school: pd.Series) -> list[float | None]:
+        values: list[float | None] = []
+        for grade in grades:
+            value = pd.to_numeric(school.get(f"학생수_20250401_{grade}학년"), errors="coerce")
+            values.append(None if pd.isna(value) else float(value))
+        return values
+
+    a_values = grade_values(a_school)
+    b_values = grade_values(b_school)
+    combined = [
+        None if a_value is None or b_value is None else a_value + b_value
+        for a_value, b_value in zip(a_values, b_values)
+    ]
+    figure = go.Figure()
+    series = [
+        ("통합 대상학교 현재", a_values, "#D62728"),
+        ("수용학교 현재", b_values, "#4878CF"),
+        ("통합 후 학생 수 합계", combined, "#F28E2B"),
+    ]
+    for name, values, color in series:
+        figure.add_trace(
+            go.Bar(
+                x=[f"{grade}학년" for grade in grades],
+                y=values,
+                name=name,
+                marker_color=color,
+                hovertemplate=f"{name}<br>%{{x}}: %{{y:,.0f}}명<extra></extra>",
+            )
+        )
+    figure.update_layout(
+        barmode="group",
+        height=390,
+        margin=dict(l=25, r=25, t=25, b=25),
+        yaxis_title="학생 수(명)",
+        legend=dict(orientation="h", y=1.12, x=0),
+    )
+    return figure
+
+
 def resource_change_figure(resource: dict) -> go.Figure:
     metrics = [
         ("학생 수", "students_before", "students_after", "명"),
@@ -233,9 +279,18 @@ def candidate_map_figure(bundle, a_code: str, a_pairs: pd.DataFrame, b_code: str
     if isinstance(a_point, pd.Series):
         a_point = a_point.iloc[0]
 
+    a_name = bundle.master.set_index(KEDI).loc[a_code, SCHOOL_NAME]
+    figure = go.Figure()
+    catchments = bundle.catchments.set_index(KEDI)
+    if a_code in catchments.index:
+        zone = catchments.loc[a_code].geometry
+        if isinstance(zone, pd.Series):
+            zone = zone.iloc[0]
+        zone_wgs84 = gpd.GeoSeries([zone], crs=bundle.catchments.crs).to_crs(4326).iloc[0]
+        add_polygon_boundary(figure, zone_wgs84)
+
     circle = gpd.GeoSeries([a_metric.buffer(3000)], crs=bundle.school_points.crs).to_crs(4326).iloc[0]
     circle_lon, circle_lat = circle.exterior.xy
-    figure = go.Figure()
     figure.add_trace(
         go.Scattermap(
             lon=list(circle_lon),
@@ -248,14 +303,28 @@ def candidate_map_figure(bundle, a_code: str, a_pairs: pd.DataFrame, b_code: str
             hoverinfo="skip",
         )
     )
+    reference_circle = gpd.GeoSeries([a_metric.buffer(1500)], crs=bundle.school_points.crs).to_crs(4326).iloc[0]
+    reference_lon, reference_lat = reference_circle.exterior.xy
+    figure.add_trace(
+        go.Scattermap(
+            lon=list(reference_lon),
+            lat=list(reference_lat),
+            mode="lines",
+            line=dict(color="rgba(31, 122, 92, 0.95)", width=2),
+            name="1.5km 참고범위",
+            hovertemplate="통합 대상학교에서 직선거리 1.5km<extra>참고범위</extra>",
+        )
+    )
 
     candidate_points = points_wgs84.reset_index()[[KEDI, "geometry"]]
     plotted = a_pairs.merge(candidate_points, left_on=PAIR_B_CODE, right_on=KEDI, how="left", validate="many_to_one")
-    plotted["후보유형"] = plotted["후보학교_소규모여부_정책2026"].map({True: "소규모 후보", False: "일반 후보"})
+    plotted["후보유형"] = plotted["후보학교_소규모여부_정책2026"].map(
+        {True: "소규모 후보학교", False: "그 외 후보학교"}
+    )
     not_selected = plotted.loc[plotted[PAIR_B_CODE].ne(b_code)].copy()
     styles = {
-        "일반 후보": ("#2A6FBB", 12),
-        "소규모 후보": ("#F28E2B", 12),
+        "그 외 후보학교": ("#2A6FBB", 12),
+        "소규모 후보학교": ("#F28E2B", 12),
     }
     for candidate_type, (color, size) in styles.items():
         subset = not_selected.loc[not_selected["후보유형"].eq(candidate_type)]
@@ -286,6 +355,19 @@ def candidate_map_figure(bundle, a_code: str, a_pairs: pd.DataFrame, b_code: str
             center_lat = (a_point.y + b_point.y) / 2
             figure.add_trace(
                 go.Scattermap(
+                    lon=[a_point.x, b_point.x],
+                    lat=[a_point.y, b_point.y],
+                    mode="lines",
+                    line=dict(color="#1B4965", width=3),
+                    hovertext=[
+                        f"{a_name} → {b_row['후보학교명']}<br>학교 간 직선거리 {selected_distance:.2f}km"
+                    ] * 2,
+                    hovertemplate="%{hovertext}<extra>학교 간 직선거리</extra>",
+                    name="학교 간 직선거리",
+                )
+            )
+            figure.add_trace(
+                go.Scattermap(
                     lon=[b_point.x],
                     lat=[b_point.y],
                     mode="markers+text",
@@ -299,7 +381,6 @@ def candidate_map_figure(bundle, a_code: str, a_pairs: pd.DataFrame, b_code: str
                 )
             )
 
-    a_name = bundle.master.set_index(KEDI).loc[a_code, SCHOOL_NAME]
     figure.add_trace(
         go.Scattermap(
             lon=[a_point.x],
@@ -624,7 +705,11 @@ else:
         if clicked_code in candidate_codes and clicked_code != b_code:
             st.session_state["pending_b"] = clicked_code
             st.rerun()
-    st.caption("지도 점을 클릭하거나 위 수용학교 목록에서 후보를 선택하세요. 주황색은 소규모 후보, 파란색은 그 외 후보입니다.")
+    st.caption(
+        "지도 점이나 위 목록에서 수용학교를 선택하세요. 주황색은 소규모 후보학교, 파란색은 그 외 후보학교입니다. "
+        "붉은 원은 3km 후보 탐색범위, 초록 원은 1.5km 참고범위입니다. "
+        "선택 후 표시되는 선은 도로 경로가 아닌 학교 간 직선거리입니다."
+    )
 
 if b_code is None:
     st.info("학생을 받을 수용학교를 선택하면 교육자원과 교육접근성 변화가 아래에 표시됩니다.")
@@ -659,6 +744,10 @@ else:
         )
         if resource["overcrowded_28_after"] and not resource["overcrowded_28_before"]:
             st.warning("통합 후 학급당 학생 수가 28명 참고선을 새로 넘습니다.")
+
+        st.markdown("#### 학년별 학생 수 변화")
+        st.plotly_chart(grade_structure_figure(bundle.master, a_code, b_code), width="stretch")
+        st.caption("2025년 4월 1일 기준이며, 통합 후 학생 수는 두 학교 학년별 학생 수의 단순 합계입니다.")
 
         st.markdown("#### 선택한 수용학교의 교육자원 여유는 어느 정도일까?")
         same_a_profile, same_a_size = comparative_resource_profile(
