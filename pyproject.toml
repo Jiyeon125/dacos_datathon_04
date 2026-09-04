@@ -1,0 +1,26 @@
+[project]
+name = "dacos-datathon-04"
+version = "0.1.0"
+description = "부산 소규모 초등학교 통합 시 교육여건 변화 시뮬레이터"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "geopandas>=1.0,<2",
+  "numpy>=1.26,<3",
+  "pandas>=2.2,<3",
+  "plotly>=5.24,<7",
+  "pyogrio>=0.9,<1",
+  "shapely>=2.0,<3",
+  "streamlit>=1.40,<2",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8,<9",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+

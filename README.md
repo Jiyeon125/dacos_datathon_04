@@ -1,3 +1,68 @@
-# Datathon
+# 부산 소규모 초등학교 통합 교육여건 시뮬레이터
 
-데이터톤 작업용 저장소입니다.
+소규모 공립초등학교 A를 다른 초등학교 B와 통합한다고 가정할 때, **학교 안 교육자원**과 **학교 밖 교육접근성**이 어떻게 변하는지 보여주는 Streamlit POC입니다. 통폐합 대상을 자동 추천하거나 실제 정책 결정을 대신하지 않습니다.
+
+## 현재 분석 범위
+
+- 모집단: 2025-10-01 부산 공립 초등학교 운영 본교 296개교
+- 소규모 분석대상: 부산교육청 2026년 학교운영비 학생수 기준 적용 92개교
+- GIS 사용 가능: 전체 294개교, 소규모 90개교
+- 후보 규칙: A 학교점에서 직선거리 3km 이하인 다른 초등학교 B
+- 후보쌍: 1,481건, 후보가 있는 A 83개교, 없는 A 7개교
+- 교육자원 가정: A 학생 전원이 이동하고 B의 학급·교원·교실·교지 규모는 고정
+- 접근성 가정: A 통학구역의 250m 균일격자에서 A/B 학교점까지 직선거리 비교
+
+## 실행
+
+Ubuntu/WSL에서 저장소 루트 기준으로 실행합니다.
+
+```bash
+uv sync
+uv run python -m scripts.build_assets
+uv run pytest
+uv run python -m scripts.validate_pipeline --all-scenarios
+uv run streamlit run app.py
+```
+
+이미 `data/processed/`가 포함된 배포본은 원자료 없이 마지막 세 명령만 실행할 수 있습니다.
+
+## 프로젝트 구조
+
+```text
+app.py                         Streamlit POC
+src/preprocessing.py           EDA 모집단·학교 마스터 생성
+src/gis_preprocessing.py       학교 위치·공식 통학구역 조인
+src/candidate_generator.py     3km 후보쌍 생성
+src/resource_simulator.py      고정자원 Before/After 계산
+src/accessibility_simulator.py 250m 격자 직선거리 변화
+src/scenario_engine.py         후보 검증과 두 분석의 결합
+scripts/build_assets.py        원자료 → 배포 데이터
+scripts/validate_pipeline.py   실제 대표 시나리오 회귀검증
+tests/                         단위·데이터 계약 테스트
+data/raw/                      원자료, Git 제외
+data/processed/                Streamlit 배포 데이터, Git 포함
+```
+
+## 데이터 계보
+
+| 자료 | 기준일 | 사용 내용 |
+|---|---:|---|
+| 데이터① 학과·학년·반별 학생수 | 2025-04-01 | 학년별 학생·학급 구조 |
+| 데이터② 학교별 학생·학급·교원 | 2025-10-01 | 모집단, 소규모 기준, 인적 교육자원 |
+| 데이터③ 학교별 면적 | 2025-04-01 | 교실 수, 교지면적 |
+| 초등학교 통학구역 SHP·표준데이터 | 2026-03-20 | A의 기존 통학구역 |
+| 전국 초중등학교 위치표준데이터 | 2026-03-20 | 학교 위치점 |
+
+4월과 10월 값의 차이를 증감 원인으로 해석하지 않습니다. GIS 자료의 운영상태로 2025년 모집단을 다시 필터링하지 않고, 학교명+행정구로 조인 가능한 학교만 공간분석에 사용합니다.
+
+## 배포 데이터
+
+원자료는 크고 앱 실행에 필요하지 않아 `data/raw/`에서만 관리합니다. `python -m scripts.build_assets`가 생성한 `data/processed/`는 Git에 포함하며 Streamlit은 이 가공본만 읽습니다. 파일별 해시와 행수는 `data/processed/dataset_manifest.json`에 기록됩니다.
+
+## 해석상 주의
+
+- 학교 간 거리와 접근거리는 현재 직선거리이며 도로망·경사·통학수단을 반영하지 않습니다.
+- 격자별 동일 가중치를 사용하므로 실제 학생 거주분포를 뜻하지 않습니다.
+- 통합 이후 교원 재배치, 학급 증설, 시설 확충, 통학버스 제공은 반영하지 않습니다.
+- 학급당 학생수 28명은 화면의 참고선일 뿐 종합판정 기준이나 점수로 사용하지 않습니다.
+- 실제 정책 결정에는 학생·학부모·지역주민 의견과 지역사회 여건 검토가 필요합니다.

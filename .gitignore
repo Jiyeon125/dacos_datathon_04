@@ -1,20 +1,20 @@
-# Python
+.venv/
 __pycache__/
 *.py[cod]
-.venv/
-venv/
+.pytest_cache/
+.streamlit/secrets.toml
 .env
-
-# Jupyter
 .ipynb_checkpoints/
-
-# Data
-data/raw/
-*.csv
-*.parquet
-*.xlsx
-
-# OS / IDE
-.DS_Store
 .idea/
 .vscode/
+.agents/
+.claude/
+
+# 재생성 가능한 원자료만 제외한다.
+data/raw/**
+!data/raw/.gitkeep
+
+# 앱 배포에 필요한 가공 데이터는 Git에 포함한다.
+outputs/
+*.log
+.DS_Store

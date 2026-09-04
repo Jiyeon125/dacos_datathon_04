@@ -1,0 +1,73 @@
+{
+  "project": "부산 소규모 초등학교 통합 교육여건 변화 시뮬레이터",
+  "generated_at_utc": "2026-09-04T06:03:04.289214+00:00",
+  "source_dates": {
+    "data1": "2025-04-01",
+    "data2": "2025-10-01",
+    "data3": "2025-04-01",
+    "gis": "2026-03-20"
+  },
+  "analysis_universe": "2025-10-01 부산 공립 초등학교 운영 본교",
+  "candidate_rule": "GIS 조인 가능한 소규모학교 A에서 학교점 직선거리 3km 이하의 다른 초등학교 B",
+  "accessibility_rule": "A 통학구역 250m 균일격자에서 A/B 학교점까지 직선거리 비교",
+  "row_counts": {
+    "busan_operating_elementary_main": 303,
+    "busan_public_elementary_main": 296,
+    "small_public_schools": 92,
+    "gis_usable_schools": 294,
+    "gis_usable_small_schools": 90,
+    "candidate_pairs_3km": 1481,
+    "small_schools_with_candidate": 83,
+    "small_schools_without_candidate": 7
+  },
+  "files": {
+    "candidate_pairs_within_3km_2025.csv": {
+      "bytes": 230560,
+      "sha256": "7385717b71bfeabcbdeb97103abf445296a03fb30c927fe72ec7e1cb1bd1e81f"
+    },
+    "data_quality_report.csv": {
+      "bytes": 519,
+      "sha256": "38d99cf5f5c631f179ebf491ed180dfb6a5ccf39f7df93f79d31539066deb40a"
+    },
+    "eda_district_summary.csv": {
+      "bytes": 619,
+      "sha256": "3b68ac5dbe47f741ae273f1de25257bf321e044f26da8a5359c99798fc910bac"
+    },
+    "eda_grade_summary.csv": {
+      "bytes": 125,
+      "sha256": "b45df47c2b34d75c2d563d706870dcbf9884cceb0f3c4253fb3f402383f326eb"
+    },
+    "eda_region_summary.csv": {
+      "bytes": 204,
+      "sha256": "1bede32d227174e0cf56973ebc91771d556ecb789991cb6fc4c90d9ef5ec8ece"
+    },
+    "gis_excluded_schools_2025.csv": {
+      "bytes": 285,
+      "sha256": "88945d3aca476ccc1420db2f0a8bf7fa5668aa958e08cd99630332dae22a0bc5"
+    },
+    "gis_point_zone_qa_2025.csv": {
+      "bytes": 11309,
+      "sha256": "032ec9eb2c5961d9eab1e84440863082cc75bd182cdb299b01a228f00735badd"
+    },
+    "school_catchments_2025.geojson": {
+      "bytes": 711476,
+      "sha256": "74c57990e79d5fa1ac79fc12bd10284c3b7c6636ba15b97da9e5aae6d7198a66"
+    },
+    "school_master_2025.csv": {
+      "bytes": 103834,
+      "sha256": "5365035fe634c97c92e30c51556474b4f4d9f5c34ad582f7d1100b75fd200a5f"
+    },
+    "school_points_2025.geojson": {
+      "bytes": 619200,
+      "sha256": "dc9b33d27e5a9943b16a358bc305b8521b0ef91e6a5919630c201be03174b083"
+    },
+    "small_school_candidate_counts_2025.csv": {
+      "bytes": 4305,
+      "sha256": "225f94e8379213094f57528149d75388d6d09fd48604f150f73feadb1f6fa8e3"
+    },
+    "small_schools_2025.csv": {
+      "bytes": 31921,
+      "sha256": "3573fd890509c1c5bcbfff9d9297981676157c4fb5e8311cf2bf1a303dfa9d75"
+    }
+  }
+}
