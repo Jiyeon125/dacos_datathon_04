@@ -11,7 +11,8 @@ import streamlit as st
 from src.candidate_generator import PAIR_A_CODE, PAIR_B_CODE
 from src.config import PROCESSED_DIR
 from src.data_loader import load_bundle
-from src.resource_simulator import resource_comparison_table, simulate_resource_change
+from src.resource_benchmark import build_resource_scenario_table, comparative_resource_profile
+from src.resource_simulator import resource_comparison_table
 from src.scenario_engine import run_scenario
 from src.schema import CLASS_SIZE, DISTRICT, KEDI, SCHOOL_NAME, SMALL_FLAG, STUDENTS
 
@@ -22,6 +23,11 @@ st.set_page_config(page_title="학교 통합 교육여건 시뮬레이터", page
 @st.cache_resource(show_spinner=False)
 def get_bundle(data_dir: str):
     return load_bundle(Path(data_dir))
+
+
+@st.cache_data(show_spinner=False)
+def get_resource_scenarios(master: pd.DataFrame, candidate_pairs: pd.DataFrame) -> pd.DataFrame:
+    return build_resource_scenario_table(master, candidate_pairs)
 
 
 def format_number(value, digits: int = 1, suffix: str = "") -> str:
@@ -52,6 +58,59 @@ def class_size_figure(before: float, after: float) -> go.Figure:
         showlegend=False,
         margin=dict(l=20, r=20, t=55, b=20),
         height=330,
+    )
+    return figure
+
+
+def resource_radar_figure(profile: pd.DataFrame, title: str, scope_size: int, selected_name: str) -> go.Figure:
+    plot = profile.dropna(subset=["percentile"]).copy()
+    theta = plot["axis"].tolist()
+    percentiles = plot["percentile"].tolist()
+    custom = plot[["raw_label", "raw_value", "unit", "valid_n"]].values.tolist()
+    if theta:
+        theta.append(theta[0])
+        percentiles.append(percentiles[0])
+        custom.append(custom[0])
+
+    figure = go.Figure()
+    figure.add_trace(
+        go.Scatterpolar(
+            r=[50] * len(theta),
+            theta=theta,
+            mode="lines",
+            line=dict(color="#8A8F98", width=2, dash="dot"),
+            hoverinfo="skip",
+            name="비교집단 중앙(50)",
+        )
+    )
+    figure.add_trace(
+        go.Scatterpolar(
+            r=percentiles,
+            theta=theta,
+            customdata=custom,
+            mode="lines+markers",
+            fill="toself",
+            fillcolor="rgba(242, 142, 43, 0.22)",
+            line=dict(color="#F28E2B", width=3),
+            marker=dict(color="#F28E2B", size=8),
+            hovertemplate=(
+                "<b>%{theta}</b><br>"
+                "%{customdata[0]}: %{customdata[1]:.1f}%{customdata[2]}<br>"
+                "유리한 방향 백분위: %{r:.0f}<br>"
+                "유효 시나리오: %{customdata[3]}개<extra></extra>"
+            ),
+            name=selected_name,
+        )
+    )
+    figure.update_layout(
+        title=dict(text=f"{title}<br><sup>{scope_size:,}개 시나리오 기준</sup>", x=0.02),
+        polar=dict(
+            bgcolor="rgba(0,0,0,0)",
+            radialaxis=dict(range=[0, 100], tickvals=[25, 50, 75, 100], ticksuffix="", angle=90),
+        ),
+        legend=dict(orientation="h", y=-0.12, x=0),
+        margin=dict(l=35, r=35, t=75, b=55),
+        height=430,
     )
     return figure
 
@@ -251,23 +310,35 @@ def accessibility_figure(bundle, grid, a_code: str, b_code: str) -> go.Figure:
     return figure
 
 
-def scenario_comparison(bundle, a_code: str, pairs: pd.DataFrame) -> pd.DataFrame:
-    rows = []
-    for _, pair in pairs.sort_values("학교간직선거리_km").iterrows():
-        resource = simulate_resource_change(bundle.master, a_code, pair[PAIR_B_CODE])
-        rows.append(
-            {
-                "후보 학교": pair["후보학교명"],
-                "구·군": pair["후보학교_행정구"],
-                "거리(km)": round(pair["학교간직선거리_km"], 2),
-                "통합 후 학급당 학생": round(resource["class_size_after"], 1),
-                "학급당 학생 변화": round(resource["class_size_delta"], 1),
-                "통합 후 학생/교원": round(resource["students_per_teacher_after"], 1),
-                "통합 후 학생/교실": round(resource["students_per_classroom_after"], 1),
-                "28명 이상": "예" if resource["overcrowded_28_after"] else "아니오",
-            }
-        )
-    return pd.DataFrame(rows)
+def scenario_comparison(resource_scenarios: pd.DataFrame, a_code: str, b_code: str | None) -> pd.DataFrame:
+    comparison = resource_scenarios.loc[resource_scenarios[PAIR_A_CODE].eq(a_code)].copy()
+    comparison["선택"] = comparison[PAIR_B_CODE].map(lambda code: "●" if code == b_code else "")
+    comparison["28명 이상"] = comparison["class_size_after"].ge(28).map({True: "예", False: "아니오"})
+    comparison["선택순서"] = comparison[PAIR_B_CODE].ne(b_code).astype(int) if b_code is not None else 0
+    comparison = comparison.sort_values(["선택순서", "학교간직선거리_km", "후보학교명"])
+    comparison = comparison.rename(
+        columns={
+            "후보학교명": "후보 학교",
+            "학교간직선거리_km": "거리(km)",
+            "class_size_after": "통합 후 학급당 학생",
+            "students_per_teacher_after": "통합 후 학생/교원",
+            "students_per_classroom_after": "통합 후 학생/교실",
+            "land_per_student_after": "통합 후 교지㎡/학생",
+        }
+    )
+    columns = [
+        "선택",
+        "후보 학교",
+        "거리(km)",
+        "통합 후 학급당 학생",
+        "통합 후 학생/교원",
+        "통합 후 학생/교실",
+        "통합 후 교지㎡/학생",
+        "28명 이상",
+    ]
+    for column in columns[2:-1]:
+        comparison[column] = comparison[column].round(2)
+    return comparison[columns].reset_index(drop=True)
 
 
 def render_busan_eda(bundle) -> None:
@@ -313,6 +384,8 @@ except Exception as error:
     st.error("배포용 데이터가 없습니다. `python -m scripts.build_assets`를 먼저 실행하세요.")
     st.exception(error)
     st.stop()
+
+resource_scenarios = get_resource_scenarios(bundle.master, bundle.candidate_pairs)
 
 counts = bundle.manifest["row_counts"]
 st.title("학교 통합, 교육여건은 어떻게 달라질까?")
@@ -444,6 +517,7 @@ else:
 
     resource_tab, access_tab = st.tabs(["학교 안 교육자원", "학교 밖 교육접근성"])
     with resource_tab:
+        st.markdown("#### 선택 시나리오의 교육자원 변화")
         left, right = st.columns([1.25, 1])
         with left:
             st.dataframe(resource_comparison_table(resource), hide_index=True, width="stretch")
@@ -452,6 +526,45 @@ else:
             st.plotly_chart(class_size_figure(resource["class_size_before"], resource["class_size_after"]), width="stretch")
         if resource["overcrowded_28_after"] and not resource["overcrowded_28_before"]:
             st.warning("통합 후 학급당 학생 수가 28명 참고선을 새로 넘습니다.")
+
+        st.markdown("#### 교육자원 상대 비교")
+        same_a_profile, same_a_size = comparative_resource_profile(
+            resource_scenarios,
+            a_code,
+            b_code,
+            same_a_only=True,
+        )
+        all_profile, all_size = comparative_resource_profile(
+            resource_scenarios,
+            a_code,
+            b_code,
+            same_a_only=False,
+        )
+        radar_left, radar_right = st.columns(2)
+        with radar_left:
+            st.plotly_chart(
+                resource_radar_figure(
+                    same_a_profile,
+                    "같은 A학교 후보와 비교",
+                    same_a_size,
+                    resource["b_name"],
+                ),
+                width="stretch",
+            )
+        with radar_right:
+            st.plotly_chart(
+                resource_radar_figure(
+                    all_profile,
+                    "전체 후보 시나리오와 비교",
+                    all_size,
+                    resource["b_name"],
+                ),
+                width="stretch",
+            )
+        st.caption(
+            "각 축은 비교집단 안의 지표별 상대 위치입니다. 높은 값은 학급·교원·교실 부담이 상대적으로 작거나 "
+            "학생 1인당 교지면적이 상대적으로 넓다는 뜻입니다. 네 축을 합산한 종합점수나 통합 추천 순위는 아닙니다."
+        )
     with access_tab:
         access_cols = st.columns(4)
         access_cols[0].metric("현재 평균", f"{access['current_mean_km']:.2f}km")
@@ -462,9 +575,9 @@ else:
         st.caption(f"격자 {access['grid_point_count']}개 · {access['assumption']}")
 
 if not a_pairs.empty:
-    with st.expander(f"{a_school[SCHOOL_NAME]}의 후보 비교", expanded=False):
-        st.dataframe(scenario_comparison(bundle, a_code, a_pairs), hide_index=True, width="stretch")
-        st.caption("단일 종합점수나 추천 순위를 만들지 않고 후보별 변화만 비교합니다.")
+    with st.expander(f"{a_school[SCHOOL_NAME]}의 모든 후보 수치 비교", expanded=False):
+        st.dataframe(scenario_comparison(resource_scenarios, a_code, b_code), hide_index=True, width="stretch")
+        st.caption("● 표시는 현재 선택한 B학교입니다. 모든 값은 B학교의 현재 자원을 고정한 통합 후 수치입니다.")
 
 with st.expander("부산 전체 현황 EDA", expanded=False):
     render_busan_eda(bundle)

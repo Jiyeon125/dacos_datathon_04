@@ -18,8 +18,11 @@
 2. 지도에서 A 반경 3km 안의 수용학교 후보를 확인합니다. 소규모 후보와 일반 후보는 색으로 구분됩니다.
 3. 지도 점 또는 수용학교 B 목록에서 비교할 학교를 선택합니다.
 4. 지도는 A와 B에 초점을 맞추고, 화면 아래에서 교육자원과 교육접근성의 Before/After 변화를 보여줍니다.
+5. 교육자원 스타차트에서 선택 시나리오를 같은 A학교의 후보군과 전체 1,481개 후보 시나리오에 각각 비교합니다.
 
 후보가 없는 학교와 2025년 학교 마스터에 있으나 GIS 조인이 되지 않은 학교도 A 목록에 남겨 두며, 해당 사유를 화면에서 별도로 안내합니다.
+
+스타차트의 네 축은 학급·교원·교실 부담과 학생 1인당 교지면적의 **지표별 유리한 방향 백분위**입니다. 축을 합산한 종합점수는 만들지 않으며, 학생 수는 교육자원 여유와 방향이 다른 규모 지표이므로 스타차트에서 제외하고 원수치 표에만 표시합니다.
 
 ## 실행
 
@@ -43,6 +46,7 @@ src/preprocessing.py           EDA 모집단·학교 마스터 생성
 src/gis_preprocessing.py       학교 위치·공식 통학구역 조인
 src/candidate_generator.py     3km 후보쌍 생성
 src/resource_simulator.py      고정자원 Before/After 계산
+src/resource_benchmark.py      후보군·전체 시나리오 상대 백분위 계산
 src/accessibility_simulator.py 250m 격자 직선거리 변화
 src/scenario_engine.py         후보 검증과 두 분석의 결합
 scripts/build_assets.py        원자료 → 배포 데이터
