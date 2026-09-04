@@ -7,6 +7,7 @@ import geopandas as gpd
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from plotly.subplots import make_subplots
 
 from src.candidate_generator import PAIR_A_CODE, PAIR_B_CODE
 from src.config import PROCESSED_DIR
@@ -41,23 +42,106 @@ def reset_receiver_selection() -> None:
     st.session_state.pop("pending_b", None)
 
 
-def class_size_figure(before: float, after: float) -> go.Figure:
-    figure = go.Figure(
-        go.Bar(
-            x=["통합 전", "통합 후"],
-            y=[before, after],
-            text=[f"{before:.1f}명", f"{after:.1f}명"],
-            textposition="outside",
-            marker_color=["#4878CF", "#F28E2B"],
-        )
+def resource_change_figure(resource: dict) -> go.Figure:
+    metrics = [
+        ("학생 수", "students_before", "students_after", "명"),
+        ("학급당 학생 수", "class_size_before", "class_size_after", "명"),
+        ("교원 1인당 학생 수", "students_per_teacher_before", "students_per_teacher_after", "명"),
+        ("학생/교실", "students_per_classroom_before", "students_per_classroom_after", "명"),
+        ("학생 1인당 교지면적", "land_per_student_before", "land_per_student_after", "㎡"),
+    ]
+    figure = make_subplots(
+        rows=3,
+        cols=2,
+        subplot_titles=[metric[0] for metric in metrics],
+        horizontal_spacing=0.12,
+        vertical_spacing=0.20,
     )
-    figure.add_hline(y=28, line_dash="dash", line_color="#C43C39", annotation_text="28명 참고선")
+    for index, (label, before_key, after_key, unit) in enumerate(metrics):
+        row, column = divmod(index, 2)
+        row, column = row + 1, column + 1
+        before = resource[before_key]
+        after = resource[after_key]
+        if before is None or after is None or pd.isna(before) or pd.isna(after):
+            continue
+        before, after = float(before), float(after)
+        range_values = [before, after]
+        if label == "학급당 학생 수":
+            range_values.append(28.0)
+        span = max(range_values) - min(range_values)
+        padding = max(span * 0.18, max(abs(value) for value in range_values) * 0.06, 0.8)
+        axis_low = max(0, min(range_values) - padding)
+        axis_high = max(range_values) + padding
+
+        figure.add_trace(
+            go.Scatter(
+                x=[before, after],
+                y=[0, 0],
+                mode="lines",
+                line=dict(color="#8A8F98", width=4),
+                hoverinfo="skip",
+                showlegend=False,
+            ),
+            row=row,
+            col=column,
+        )
+        figure.add_trace(
+            go.Scatter(
+                x=[before],
+                y=[0],
+                mode="markers+text",
+                marker=dict(color="#4878CF", size=14),
+                text=[f"전 {before:,.1f}{unit}"],
+                textposition="top center",
+                hovertemplate=f"통합 전: %{{x:,.2f}}{unit}<extra>{label}</extra>",
+                name="통합 전",
+                legendgroup="before",
+                showlegend=index == 0,
+            ),
+            row=row,
+            col=column,
+        )
+        figure.add_trace(
+            go.Scatter(
+                x=[after],
+                y=[0],
+                mode="markers+text",
+                marker=dict(color="#F28E2B", size=14),
+                text=[f"후 {after:,.1f}{unit}"],
+                textposition="bottom center",
+                hovertemplate=f"통합 후: %{{x:,.2f}}{unit}<extra>{label}</extra>",
+                name="통합 후",
+                legendgroup="after",
+                showlegend=index == 0,
+            ),
+            row=row,
+            col=column,
+        )
+        figure.update_xaxes(
+            range=[axis_low, axis_high],
+            title_text=unit,
+            showgrid=False,
+            zeroline=False,
+            row=row,
+            col=column,
+        )
+        figure.update_yaxes(visible=False, range=[-0.5, 0.5], row=row, col=column)
+        if label == "학급당 학생 수":
+            figure.add_vline(
+                x=28,
+                line_dash="dash",
+                line_color="#C43C39",
+                annotation_text="28명 참고선",
+                annotation_position="top right",
+                row=row,
+                col=column,
+            )
+
     figure.update_layout(
-        title="학급당 학생 수",
-        yaxis_title="명",
-        showlegend=False,
-        margin=dict(l=20, r=20, t=55, b=20),
-        height=330,
+        height=650,
+        legend=dict(orientation="h", y=1.08, x=0),
+        margin=dict(l=25, r=25, t=75, b=25),
+        hovermode="closest",
     )
     return figure
 
@@ -518,12 +602,12 @@ else:
     resource_tab, access_tab = st.tabs(["학교 안 교육자원", "학교 밖 교육접근성"])
     with resource_tab:
         st.markdown("#### 선택 시나리오의 교육자원 변화")
-        left, right = st.columns([1.25, 1])
-        with left:
-            st.dataframe(resource_comparison_table(resource), hide_index=True, width="stretch")
-            st.caption("고정자원 가정: A학생만 B로 이동하고 B의 학급·교원·교실·교지는 유지합니다.")
-        with right:
-            st.plotly_chart(class_size_figure(resource["class_size_before"], resource["class_size_after"]), width="stretch")
+        st.dataframe(resource_comparison_table(resource), hide_index=True, width="stretch")
+        st.plotly_chart(resource_change_figure(resource), width="stretch")
+        st.caption(
+            "각 패널은 서로 다른 단위와 범위를 유지한 통합 전→후 원수치입니다. "
+            "고정자원 가정에 따라 A학생만 B로 이동하고 B의 학급·교원·교실·교지는 유지합니다."
+        )
         if resource["overcrowded_28_after"] and not resource["overcrowded_28_before"]:
             st.warning("통합 후 학급당 학생 수가 28명 참고선을 새로 넘습니다.")
 
