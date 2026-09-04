@@ -15,6 +15,7 @@ TEACHERS = "교원수_20251001"
 CLASS_SIZE = "학급당학생수_20251001_계산"
 STUDENTS_PER_TEACHER = "교원1인당학생수_20251001_계산"
 CLASSROOMS = "전체교실수_20250401"
+GENERAL_CLASSROOMS = "일반교실수_20250401"
 LAND_AREA = "교지면적_20250401"
 SMALL_FLAG = "주분석대상_소규모공립_정책2026"
 POLICY_THRESHOLD = "부산교육청_기준학생수_정책2026"
@@ -41,6 +42,7 @@ REQUIRED_MASTER_COLUMNS = [
     CLASSES,
     TEACHERS,
     CLASSROOMS,
+    GENERAL_CLASSROOMS,
     LAND_AREA,
     SMALL_FLAG,
 ]
@@ -67,4 +69,3 @@ def normalize_master_columns(frame: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"학교 마스터 필수 컬럼 누락: {missing}")
     return result
-

@@ -36,6 +36,8 @@ def validate_all_scenarios(bundle) -> None:
             resource = scenario["resource"]
             access = scenario["accessibility"]
             values = [
+                resource["classes_before"],
+                resource["classes_after"],
                 resource["class_size_before"],
                 resource["class_size_after"],
                 resource["students_per_teacher_after"],
@@ -78,8 +80,10 @@ def main() -> None:
     resource = scenario["resource"]
     access = scenario["accessibility"]
     assert_close("가남→가야 학교간 거리", scenario["pair"]["distance_km"], 0.716, 0.01)
-    assert_close("가야 학급당 학생수 통합 전", resource["class_size_before"], 21.8, 0.1)
-    assert_close("가야 학급당 학생수 통합 후", resource["class_size_after"], 23.0, 0.1)
+    assert_close("가야 일반학급 수 통합 전", resource["classes_before"], 42, 0.01)
+    assert_close("25명 기준 일반학급 수 통합 후", resource["classes_after"], 42, 0.01)
+    assert_close("가야 일반학급당 학생수 통합 전", resource["class_size_before"], 22.714, 0.01)
+    assert_close("가야 일반학급당 학생수 통합 후", resource["class_size_after"], 23.905, 0.01)
     assert_close("현재 평균 직선거리", access["current_mean_km"], 0.202, 0.03)
     assert_close("통합 후 평균 직선거리", access["after_mean_km"], 0.775, 0.03)
     assert_close("평균 추가 접근거리", access["added_mean_km"], 0.573, 0.03)
@@ -90,7 +94,11 @@ def main() -> None:
     print(report.to_string(index=False))
     print("\n대표 시나리오 검증 완료: 가남초 → 가야초")
     print(f"- 학교간 직선거리: {scenario['pair']['distance_km']:.3f}km")
-    print(f"- 학급당 학생수: {resource['class_size_before']:.1f} → {resource['class_size_after']:.1f}")
+    print(
+        f"- 일반학급 수: 수용학교 {resource['classes_before']} / 두 학교 현재 합 "
+        f"{resource['classes_current_sum']} / 25명 기준 {resource['classes_after']}"
+    )
+    print(f"- 일반학급당 학생수: {resource['class_size_before']:.1f} → {resource['class_size_after']:.1f}")
     print(f"- 평균 추가 접근거리: {access['added_mean_km']:.3f}km")
     print(f"- 접근성 악화 격자: {access['worsened_pct']:.1f}% ({len(grid)}개 격자)")
     if args.all_scenarios:

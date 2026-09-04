@@ -18,6 +18,9 @@ def test_resource_scenario_table_matches_single_scenario_engine():
 
     assert len(table) == len(bundle.candidate_pairs) == 1481
     assert not table.duplicated([PAIR_A_CODE, PAIR_B_CODE]).any()
+    assert row["classes_before"] == pytest.approx(single["classes_before"])
+    assert row["classes_after"] == pytest.approx(single["classes_after"])
+    assert row["classes_delta_vs_current_sum"] == pytest.approx(single["classes_delta_vs_current_sum"])
     assert row["class_size_after"] == pytest.approx(single["class_size_after"])
     assert row["students_per_teacher_after"] == pytest.approx(single["students_per_teacher_after"])
     assert row["students_per_classroom_after"] == pytest.approx(single["students_per_classroom_after"])
@@ -58,6 +61,6 @@ def test_lower_burden_receives_higher_favorable_percentile():
         same_a_only=True,
     )
 
-    low_percentile = low_profile.loc[low_profile["axis"].eq("학급 여유"), "percentile"].iloc[0]
-    high_percentile = high_profile.loc[high_profile["axis"].eq("학급 여유"), "percentile"].iloc[0]
+    low_percentile = low_profile.loc[low_profile["axis"].eq("일반학급 여유"), "percentile"].iloc[0]
+    high_percentile = high_profile.loc[high_profile["axis"].eq("일반학급 여유"), "percentile"].iloc[0]
     assert low_percentile > high_percentile

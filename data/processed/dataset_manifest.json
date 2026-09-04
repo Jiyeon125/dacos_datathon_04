@@ -1,6 +1,6 @@
 {
   "project": "부산 소규모 초등학교 통합 교육여건 변화 시뮬레이터",
-  "generated_at_utc": "2026-09-04T06:03:04.289214+00:00",
+  "generated_at_utc": "2026-09-04T08:36:27.007010+00:00",
   "source_dates": {
     "data1": "2025-04-01",
     "data2": "2025-10-01",
@@ -26,8 +26,8 @@
       "sha256": "7385717b71bfeabcbdeb97103abf445296a03fb30c927fe72ec7e1cb1bd1e81f"
     },
     "data_quality_report.csv": {
-      "bytes": 519,
-      "sha256": "38d99cf5f5c631f179ebf491ed180dfb6a5ccf39f7df93f79d31539066deb40a"
+      "bytes": 754,
+      "sha256": "8cc35b078b3cd4efda1c7c104bb876dee93efaa01025a4c47a98b20aa0da0686"
     },
     "eda_district_summary.csv": {
       "bytes": 619,
@@ -54,20 +54,20 @@
       "sha256": "74c57990e79d5fa1ac79fc12bd10284c3b7c6636ba15b97da9e5aae6d7198a66"
     },
     "school_master_2025.csv": {
-      "bytes": 103834,
-      "sha256": "5365035fe634c97c92e30c51556474b4f4d9f5c34ad582f7d1100b75fd200a5f"
+      "bytes": 140980,
+      "sha256": "23131daa7292eb78f9d4e3bcaa345a07c6b6fde653153c68d6e3fb250af85b32"
     },
     "school_points_2025.geojson": {
-      "bytes": 619200,
-      "sha256": "dc9b33d27e5a9943b16a358bc305b8521b0ef91e6a5919630c201be03174b083"
+      "bytes": 962102,
+      "sha256": "cbbf2de23d5e6ff37d419ebffe3ec944ec1a718a59b87aa01d810fbb1b6a00b6"
     },
     "small_school_candidate_counts_2025.csv": {
       "bytes": 4305,
       "sha256": "225f94e8379213094f57528149d75388d6d09fd48604f150f73feadb1f6fa8e3"
     },
     "small_schools_2025.csv": {
-      "bytes": 31921,
-      "sha256": "3573fd890509c1c5bcbfff9d9297981676157c4fb5e8311cf2bf1a303dfa9d75"
+      "bytes": 43778,
+      "sha256": "1ccaa77d0bfbab3e984cd8af2838cfeccf471a30224530a876ce6abc491d7ea3"
     }
   }
 }

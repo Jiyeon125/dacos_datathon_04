@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 
 from src.candidate_generator import PAIR_A_CODE, PAIR_B_CODE
+from src.class_formation import GRADES, general_class_column, general_student_column
+from src.config import BUSAN_ELEMENTARY_CLASS_FORMATION_2025
 from src.schema import (
-    CLASSES,
     CLASSROOMS,
     KEDI,
     LAND_AREA,
@@ -20,9 +21,9 @@ from src.schema import (
 
 RADAR_METRICS = (
     {
-        "axis": "학급 여유",
+        "axis": "일반학급 여유",
         "column": "class_size_after",
-        "raw_label": "학급당 학생 수",
+        "raw_label": "일반학급당 학생 수",
         "unit": "명",
         "higher_is_better": False,
     },
@@ -57,7 +58,7 @@ def _safe_divide(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
 
 
 def build_resource_scenario_table(master: pd.DataFrame, candidate_pairs: pd.DataFrame) -> pd.DataFrame:
-    """모든 A-B 후보쌍의 고정자원 가정 결과를 벡터 연산으로 계산한다."""
+    """모든 후보쌍에 25명 학년별 학급 재편성과 나머지 고정자원 가정을 적용한다."""
     lookup = master.copy()
     lookup[KEDI] = normalize_kedi(lookup[KEDI])
     if lookup[KEDI].duplicated().any():
@@ -74,7 +75,23 @@ def build_resource_scenario_table(master: pd.DataFrame, candidate_pairs: pd.Data
     a_students = pd.to_numeric(pairs[PAIR_A_CODE].map(lookup[STUDENTS]), errors="coerce")
     b_students = pd.to_numeric(pairs[PAIR_B_CODE].map(lookup[STUDENTS]), errors="coerce")
     after_students = a_students + b_students
-    b_classes = pairs[PAIR_B_CODE].map(lookup[CLASSES])
+    capacity = int(BUSAN_ELEMENTARY_CLASS_FORMATION_2025["students_per_class"])
+    general_students_after = pd.Series(0.0, index=pairs.index)
+    classes_before = pd.Series(0.0, index=pairs.index)
+    classes_current_sum = pd.Series(0.0, index=pairs.index)
+    classes_after = pd.Series(0.0, index=pairs.index)
+    for grade in GRADES:
+        student_column = general_student_column(grade)
+        class_column = general_class_column(grade)
+        a_grade_students = pd.to_numeric(pairs[PAIR_A_CODE].map(lookup[student_column]), errors="coerce")
+        b_grade_students = pd.to_numeric(pairs[PAIR_B_CODE].map(lookup[student_column]), errors="coerce")
+        a_grade_classes = pd.to_numeric(pairs[PAIR_A_CODE].map(lookup[class_column]), errors="coerce")
+        b_grade_classes = pd.to_numeric(pairs[PAIR_B_CODE].map(lookup[class_column]), errors="coerce")
+        combined_grade_students = a_grade_students + b_grade_students
+        general_students_after += combined_grade_students
+        classes_before += b_grade_classes
+        classes_current_sum += a_grade_classes + b_grade_classes
+        classes_after += np.ceil(combined_grade_students / capacity).where(combined_grade_students.gt(0), 0)
     b_teachers = pairs[PAIR_B_CODE].map(lookup[TEACHERS])
     b_classrooms = pairs[PAIR_B_CODE].map(lookup[CLASSROOMS])
     b_land = pairs[PAIR_B_CODE].map(lookup[LAND_AREA])
@@ -89,7 +106,12 @@ def build_resource_scenario_table(master: pd.DataFrame, candidate_pairs: pd.Data
             "moving_students": a_students,
             "students_before": b_students,
             "students_after": after_students,
-            "class_size_after": _safe_divide(after_students, b_classes),
+            "general_students_after": general_students_after,
+            "classes_before": classes_before,
+            "classes_current_sum": classes_current_sum,
+            "classes_after": classes_after,
+            "classes_delta_vs_current_sum": classes_after - classes_current_sum,
+            "class_size_after": _safe_divide(general_students_after, classes_after),
             "students_per_teacher_after": _safe_divide(after_students, b_teachers),
             "students_per_classroom_after": _safe_divide(after_students, b_classrooms),
             "land_per_student_after": _safe_divide(b_land, after_students),

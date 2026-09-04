@@ -82,26 +82,44 @@ def _build_data1_grade(data1: pd.DataFrame, school_codes: set[str]) -> tuple[pd.
     rows = _to_numeric(rows, ["학년", "학급수", "학생수_계"])
     grain = [KEDI, "학과코드", "학과 주/야간", "단식/복식", "일반/특수/순회", "학년", "반"]
     duplicate_count = int(rows.duplicated(grain, keep=False).sum())
-    grade = (
-        rows.loc[rows["학년"].between(1, 6)]
-        .groupby([KEDI, "학년"], as_index=False)[["학생수_계", "학급수"]]
-        .sum()
-    )
+    grade_rows = rows.loc[rows["학년"].between(1, 6)].copy()
+    grade = grade_rows.groupby([KEDI, "학년"], as_index=False)[["학생수_계", "학급수"]].sum()
+    for category, prefix in (("일반", "일반"), ("특수", "특수")):
+        category_grade = (
+            grade_rows.loc[grade_rows["일반/특수/순회"].eq(category)]
+            .groupby([KEDI, "학년"], as_index=False)[["학생수_계", "학급수"]]
+            .sum()
+            .rename(columns={"학생수_계": f"{prefix}학생수", "학급수": f"{prefix}학급수"})
+        )
+        grade = grade.merge(category_grade, on=[KEDI, "학년"], how="left", validate="one_to_one")
+        grade[[f"{prefix}학생수", f"{prefix}학급수"]] = grade[
+            [f"{prefix}학생수", f"{prefix}학급수"]
+        ].fillna(0)
     return grade, duplicate_count
 
 
 def _pivot_grade(grade: pd.DataFrame) -> pd.DataFrame:
-    student_pivot = grade.pivot(index=KEDI, columns="학년", values="학생수_계")
-    class_pivot = grade.pivot(index=KEDI, columns="학년", values="학급수")
-    output = pd.DataFrame(index=student_pivot.index.union(class_pivot.index))
+    pivots = {
+        value: grade.pivot(index=KEDI, columns="학년", values=value)
+        for value in ["학생수_계", "학급수", "일반학생수", "일반학급수", "특수학생수", "특수학급수"]
+    }
+    output = pd.DataFrame(index=pivots["학생수_계"].index)
     output.index.name = KEDI
     for grade_no in range(1, 7):
-        output[f"학생수_20250401_{grade_no}학년"] = student_pivot.get(grade_no)
-        output[f"학급수_20250401_{grade_no}학년"] = class_pivot.get(grade_no)
-    student_cols = [f"학생수_20250401_{grade_no}학년" for grade_no in range(1, 7)]
-    class_cols = [f"학급수_20250401_{grade_no}학년" for grade_no in range(1, 7)]
-    output["학생수_20250401_반합계"] = output[student_cols].sum(axis=1, min_count=1)
-    output["학급수_20250401_반합계"] = output[class_cols].sum(axis=1, min_count=1)
+        output[f"학생수_20250401_{grade_no}학년"] = pivots["학생수_계"].get(grade_no).fillna(0)
+        output[f"학급수_20250401_{grade_no}학년"] = pivots["학급수"].get(grade_no).fillna(0)
+        for prefix in ("일반", "특수"):
+            output[f"{prefix}학생수_20250401_{grade_no}학년"] = pivots[f"{prefix}학생수"].get(grade_no).fillna(0)
+            output[f"{prefix}학급수_20250401_{grade_no}학년"] = pivots[f"{prefix}학급수"].get(grade_no).fillna(0)
+    for prefix, student_base, class_base in (
+        ("", "학생수", "학급수"),
+        ("일반", "일반학생수", "일반학급수"),
+        ("특수", "특수학생수", "특수학급수"),
+    ):
+        student_cols = [f"{student_base}_20250401_{grade_no}학년" for grade_no in range(1, 7)]
+        class_cols = [f"{class_base}_20250401_{grade_no}학년" for grade_no in range(1, 7)]
+        output[f"{student_base}_20250401_반합계"] = output[student_cols].sum(axis=1, min_count=1)
+        output[f"{class_base}_20250401_반합계"] = output[class_cols].sum(axis=1, min_count=1)
     return output.reset_index()
 
 
@@ -212,6 +230,18 @@ def build_education_assets(data1: pd.DataFrame, data2: pd.DataFrame, data3: pd.D
     matching_totals = (
         master["학생수_20250401_반합계"].fillna(-1).eq(master["학생수_20250401_학교총계"].fillna(-2))
     )
+    matching_student_types = master["학생수_20250401_반합계"].eq(
+        master["일반학생수_20250401_반합계"] + master["특수학생수_20250401_반합계"]
+    )
+    matching_class_types = master["학급수_20250401_반합계"].eq(
+        master["일반학급수_20250401_반합계"] + master["특수학급수_20250401_반합계"]
+    )
+    class_formation_columns = [
+        f"{prefix}{kind}_20250401_{grade}학년"
+        for prefix in ("일반", "특수")
+        for kind in ("학생수", "학급수")
+        for grade in range(1, 7)
+    ]
     ratio_diff = (master[CLASS_SIZE] - master["학급당학생수_20251001_공시"]).abs()
     quality_rows = [
         _quality_row("부산 운영 본교 수", len(operating) == 303, len(operating), 303),
@@ -223,6 +253,15 @@ def build_education_assets(data1: pd.DataFrame, data2: pd.DataFrame, data3: pd.D
         _quality_row("데이터1 학교 조인", master["학생수_20250401_반합계"].notna().all(), int(master["학생수_20250401_반합계"].notna().sum()), len(master)),
         _quality_row("데이터3 학교 조인", master[LAND_AREA].notna().all(), int(master[LAND_AREA].notna().sum()), len(master)),
         _quality_row("4월 학생총계 일치", bool(matching_totals.all()), int(matching_totals.sum()), len(master)),
+        _quality_row("4월 일반+특수 학생 합계 일치", bool(matching_student_types.all()), int(matching_student_types.sum()), len(master)),
+        _quality_row("4월 일반+특수 학급 합계 일치", bool(matching_class_types.all()), int(matching_class_types.sum()), len(master)),
+        _quality_row(
+            "학년별 학급 재편성 입력값 완전성",
+            bool(master[class_formation_columns].notna().all().all()),
+            int(master[class_formation_columns].notna().all(axis=1).sum()),
+            len(master),
+            "해당 학년 행이 없으면 학생·학급 0으로 처리",
+        ),
         _quality_row("10월 학급당학생수 공시 반올림 일치", bool(ratio_diff.le(0.051).all()), float(ratio_diff.max()), "<=0.051"),
     ]
     quality = pd.DataFrame(quality_rows)

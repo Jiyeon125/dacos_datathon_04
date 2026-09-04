@@ -13,7 +13,7 @@ from src.candidate_generator import PAIR_A_CODE, PAIR_B_CODE
 from src.config import PROCESSED_DIR
 from src.data_loader import load_bundle
 from src.resource_benchmark import build_resource_scenario_table, comparative_resource_profile
-from src.resource_simulator import resource_comparison_table
+from src.resource_simulator import grade_class_comparison_table, resource_comparison_table
 from src.scenario_engine import run_scenario
 from src.schema import CLASS_SIZE, DISTRICT, KEDI, SCHOOL_NAME, SMALL_FLAG, STUDENTS
 
@@ -75,14 +75,17 @@ def grade_structure_figure(master: pd.DataFrame, a_code: str, b_code: str) -> go
                 y=values,
                 name=name,
                 marker_color=color,
+                text=[None if value is None else f"{value:,.0f}" for value in values],
+                textposition="outside",
                 hovertemplate=f"{name}<br>%{{x}}: %{{y:,.0f}}명<extra></extra>",
             )
         )
     figure.update_layout(
         barmode="group",
-        height=390,
+        height=420,
         margin=dict(l=25, r=25, t=25, b=25),
         yaxis_title="학생 수(명)",
+        yaxis=dict(rangemode="tozero"),
         legend=dict(orientation="h", y=1.12, x=0),
     )
     return figure
@@ -91,7 +94,8 @@ def grade_structure_figure(master: pd.DataFrame, a_code: str, b_code: str) -> go
 def resource_change_figure(resource: dict) -> go.Figure:
     metrics = [
         ("학생 수", "students_before", "students_after", "명"),
-        ("학급당 학생 수", "class_size_before", "class_size_after", "명"),
+        ("일반학급 수", "classes_before", "classes_after", "학급"),
+        ("일반학급당 학생 수", "class_size_before", "class_size_after", "명"),
         ("교원 1인당 학생 수", "students_per_teacher_before", "students_per_teacher_after", "명"),
         ("학생/교실", "students_per_classroom_before", "students_per_classroom_after", "명"),
         ("학생 1인당 교지면적", "land_per_student_before", "land_per_student_after", "㎡"),
@@ -99,9 +103,16 @@ def resource_change_figure(resource: dict) -> go.Figure:
     figure = make_subplots(
         rows=3,
         cols=2,
-        subplot_titles=[metric[0] for metric in metrics],
-        horizontal_spacing=0.12,
-        vertical_spacing=0.20,
+        horizontal_spacing=0.10,
+        vertical_spacing=0.15,
+    )
+    figure.update_layout(
+        height=840,
+        showlegend=False,
+        margin=dict(l=36, r=36, t=18, b=52),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="rgba(0,0,0,0)",
+        hovermode="closest",
     )
     for index, (label, before_key, after_key, unit) in enumerate(metrics):
         row, column = divmod(index, 2)
@@ -112,13 +123,40 @@ def resource_change_figure(resource: dict) -> go.Figure:
             continue
         before, after = float(before), float(after)
         range_values = [before, after]
-        if label == "학급당 학생 수":
+        if label == "일반학급당 학생 수":
             range_values.append(28.0)
         span = max(range_values) - min(range_values)
-        padding = max(span * 0.18, max(abs(value) for value in range_values) * 0.06, 0.8)
+        padding = max(span * 0.22, max(abs(value) for value in range_values) * 0.08, 1.0)
         axis_low = max(0, min(range_values) - padding)
         axis_high = max(range_values) + padding
 
+        figure.add_shape(
+            type="rect",
+            xref="x domain",
+            yref="y domain",
+            x0=0.0,
+            x1=1.0,
+            y0=-0.18,
+            y1=1.04,
+            fillcolor="#FAFBFD",
+            line=dict(color="#D8DEE8", width=1.2),
+            layer="below",
+            row=row,
+            col=column,
+        )
+        figure.add_annotation(
+            text=f"{label} ({unit})",
+            xref="x domain",
+            yref="y",
+            x=0.0,
+            y=1.55,
+            xanchor="left",
+            yanchor="middle",
+            showarrow=False,
+            font=dict(size=15, color="#26323F"),
+            row=row,
+            col=column,
+        )
         figure.add_trace(
             go.Scatter(
                 x=[before, after],
@@ -139,10 +177,10 @@ def resource_change_figure(resource: dict) -> go.Figure:
                 marker=dict(color="#4878CF", size=14),
                 text=[f"전 {before:,.1f}{unit}"],
                 textposition="top center",
+                textfont=dict(color="#315E9E", size=12),
+                cliponaxis=True,
                 hovertemplate=f"통합 전: %{{x:,.2f}}{unit}<extra>{label}</extra>",
-                name="통합 전",
-                legendgroup="before",
-                showlegend=index == 0,
+                showlegend=False,
             ),
             row=row,
             col=column,
@@ -155,40 +193,62 @@ def resource_change_figure(resource: dict) -> go.Figure:
                 marker=dict(color="#F28E2B", size=14),
                 text=[f"후 {after:,.1f}{unit}"],
                 textposition="bottom center",
+                textfont=dict(color="#B85D12", size=12),
+                cliponaxis=True,
                 hovertemplate=f"통합 후: %{{x:,.2f}}{unit}<extra>{label}</extra>",
-                name="통합 후",
-                legendgroup="after",
-                showlegend=index == 0,
+                showlegend=False,
             ),
             row=row,
             col=column,
         )
         figure.update_xaxes(
             range=[axis_low, axis_high],
-            title_text=unit,
             showgrid=False,
             zeroline=False,
+            showline=True,
+            linecolor="#CBD5E1",
+            linewidth=1,
+            ticks="outside",
+            tickfont=dict(size=11, color="#5D6773"),
+            automargin=False,
             row=row,
             col=column,
         )
-        figure.update_yaxes(visible=False, range=[-0.5, 0.5], row=row, col=column)
-        if label == "학급당 학생 수":
-            figure.add_vline(
-                x=28,
-                line_dash="dash",
-                line_color="#C43C39",
-                annotation_text="28명 참고선",
-                annotation_position="top right",
+        figure.update_yaxes(
+            visible=False,
+            range=[-1.2, 1.85],
+            automargin=False,
+            constrain="domain",
+            row=row,
+            col=column,
+        )
+        if label == "일반학급당 학생 수":
+            figure.add_shape(
+                type="line",
+                x0=28,
+                x1=28,
+                y0=0,
+                y1=1,
+                xref="x",
+                yref="y domain",
+                line=dict(color="#C43C39", width=1.4, dash="dash"),
                 row=row,
                 col=column,
             )
-
-    figure.update_layout(
-        height=650,
-        legend=dict(orientation="h", y=1.08, x=0),
-        margin=dict(l=25, r=25, t=75, b=25),
-        hovermode="closest",
-    )
+            figure.add_annotation(
+                text="28명 참고선",
+                x=28,
+                y=0.08,
+                xref="x",
+                yref="y domain",
+                xanchor="left",
+                yanchor="bottom",
+                showarrow=False,
+                font=dict(size=10, color="#8F2D2B"),
+                xshift=6,
+                row=row,
+                col=column,
+            )
     return figure
 
 
@@ -458,6 +518,10 @@ def accessibility_figure(bundle, grid, a_code: str, b_code: str) -> go.Figure:
         b_point = b_point.iloc[0]
     names = bundle.master.set_index(KEDI)[SCHOOL_NAME]
     a_name, b_name = names.loc[a_code], names.loc[b_code]
+    max_abs_change = max(
+        float(grid["추가접근거리_km"].abs().max()),
+        0.01,
+    )
     figure = go.Figure()
     add_polygon_boundary(figure, zone_wgs84)
     figure.add_trace(
@@ -468,11 +532,14 @@ def accessibility_figure(bundle, grid, a_code: str, b_code: str) -> go.Figure:
             marker=dict(
                 size=9,
                 color=grid["추가접근거리_km"],
-                colorscale="RdYlBu_r",
-                colorbar=dict(title="추가거리<br>(km)"),
+                colorscale=[[0, "#2166AC"], [0.5, "#F7F7F7"], [1, "#B2182B"]],
+                cmin=-max_abs_change,
+                cmax=max_abs_change,
+                cmid=0,
+                colorbar=dict(title="추가 접근거리<br>(km)<br>− 가까워짐 / + 멀어짐"),
             ),
             text=[
-                f"현재 {current:.2f}km<br>통합 후 {after:.2f}km<br>변화 {added:+.2f}km"
+                f"현재 거리 {current:.2f}km<br>통합 후 거리 {after:.2f}km<br>증감 {added:+.2f}km"
                 for current, after, added in zip(
                     grid["현재거리_km"], grid["통합후거리_km"], grid["추가접근거리_km"]
                 )
@@ -526,28 +593,30 @@ def accessibility_figure(bundle, grid, a_code: str, b_code: str) -> go.Figure:
 def scenario_comparison(resource_scenarios: pd.DataFrame, a_code: str, b_code: str | None) -> pd.DataFrame:
     comparison = resource_scenarios.loc[resource_scenarios[PAIR_A_CODE].eq(a_code)].copy()
     comparison["선택"] = comparison[PAIR_B_CODE].map(lambda code: "●" if code == b_code else "")
-    comparison["28명 이상"] = comparison["class_size_after"].ge(28).map({True: "예", False: "아니오"})
+    comparison["28명 참고선 이상"] = comparison["class_size_after"].ge(28).map({True: "예", False: "아니오"})
     comparison["선택순서"] = comparison[PAIR_B_CODE].ne(b_code).astype(int) if b_code is not None else 0
     comparison = comparison.sort_values(["선택순서", "학교간직선거리_km", "후보학교명"])
     comparison = comparison.rename(
         columns={
-            "후보학교명": "후보 학교",
-            "학교간직선거리_km": "거리(km)",
-            "class_size_after": "통합 후 학급당 학생",
-            "students_per_teacher_after": "통합 후 학생/교원",
-            "students_per_classroom_after": "통합 후 학생/교실",
-            "land_per_student_after": "통합 후 교지㎡/학생",
+            "후보학교명": "후보학교",
+            "학교간직선거리_km": "학교 간 직선거리(km)",
+            "classes_after": "필요 일반학급 수(학급)",
+            "class_size_after": "통합 후 일반학급당 학생 수(명)",
+            "students_per_teacher_after": "통합 후 교원 1인당 학생 수(명)",
+            "students_per_classroom_after": "통합 후 학생/교실(명)",
+            "land_per_student_after": "통합 후 학생 1인당 교지면적(㎡)",
         }
     )
     columns = [
         "선택",
-        "후보 학교",
-        "거리(km)",
-        "통합 후 학급당 학생",
-        "통합 후 학생/교원",
-        "통합 후 학생/교실",
-        "통합 후 교지㎡/학생",
-        "28명 이상",
+        "후보학교",
+        "학교 간 직선거리(km)",
+        "필요 일반학급 수(학급)",
+        "통합 후 일반학급당 학생 수(명)",
+        "통합 후 교원 1인당 학생 수(명)",
+        "통합 후 학생/교실(명)",
+        "통합 후 학생 1인당 교지면적(㎡)",
+        "28명 참고선 이상",
     ]
     for column in columns[2:-1]:
         comparison[column] = comparison[column].round(2)
@@ -638,6 +707,7 @@ with control_a:
         format_func=small_label.get,
         key="a_select",
         on_change=reset_receiver_selection,
+        help="부산 소규모 공립초등학교 분석대상에서 통합 대상으로 가정할 학교를 선택합니다.",
     )
 
 a_pairs = bundle.candidate_pairs.loc[bundle.candidate_pairs[PAIR_A_CODE].eq(a_code)].sort_values("학교간직선거리_km").copy()
@@ -651,7 +721,7 @@ if st.session_state.get("b_select") not in candidate_codes:
 b_label = {
     row[PAIR_B_CODE]: (
         f"{row['후보학교명']} · {row['학교간직선거리_km']:.2f}km · "
-        f"현재 {row['후보학교_학급당학생수_20251001']:.1f}명/학급"
+        f"10월 공시 {row['후보학교_학급당학생수_20251001']:.1f}명/학급"
     )
     for _, row in a_pairs.iterrows()
 }
@@ -662,9 +732,15 @@ with control_b:
             options=[None, *candidate_codes],
             format_func=lambda code: "지도 또는 목록에서 후보를 선택하세요" if code is None else b_label[code],
             key="b_select",
+            help="선택한 통합 대상학교에서 학교점 직선거리 3km 이내인 수용학교 후보입니다.",
         )
     else:
-        st.selectbox("통합 후 학생을 받을 수용학교", options=["선택 가능한 후보가 없습니다"], disabled=True)
+        st.selectbox(
+            "통합 후 학생을 받을 수용학교",
+            options=["선택 가능한 후보가 없습니다"],
+            disabled=True,
+            help="3km 이내에 GIS로 연결 가능한 수용학교 후보가 없습니다.",
+        )
         b_code = None
 
 a_school = bundle.master.set_index(KEDI).loc[a_code]
@@ -674,6 +750,16 @@ st.caption(
     f"교원 1인당 {a_school['교원1인당학생수_20251001_계산']:.1f}명 · "
     f"3km 후보 {len(a_pairs)}개"
 )
+
+if a_code in gis_codes:
+    within_1_5 = int(a_pairs["학교간직선거리_km"].le(1.5).sum())
+    between_1_5_and_3 = int(a_pairs["학교간직선거리_km"].gt(1.5).sum())
+    small_candidates = int(a_pairs["후보학교_소규모여부_정책2026"].fillna(False).sum())
+    candidate_summary = st.columns(4)
+    candidate_summary[0].metric("3km 이내 후보", f"{len(a_pairs):,}개", help="학교점 직선거리 3km 이내의 전체 후보학교 수")
+    candidate_summary[1].metric("1.5km 이내", f"{within_1_5:,}개", help="후보 중 학교점 직선거리 1.5km 이내인 학교 수")
+    candidate_summary[2].metric("1.5~3km", f"{between_1_5_and_3:,}개", help="후보 중 1.5km 초과 3km 이내인 학교 수")
+    candidate_summary[3].metric("소규모 후보학교", f"{small_candidates:,}개", help="3km 후보 중 소규모학교 분석기준에 해당하는 학교 수")
 
 if a_code not in gis_codes:
     excluded = bundle.excluded_schools.loc[bundle.excluded_schools[KEDI].eq(a_code)]
@@ -728,26 +814,56 @@ else:
     st.subheader(f"{resource['a_name']} → {resource['b_name']}")
     hero = st.columns(4)
     hero[0].metric("이동 학생", f"{resource['moving_students']:,}명")
-    hero[1].metric("학교간 직선거리", f"{scenario['pair']['distance_km']:.2f}km")
+    hero[1].metric("학교 간 직선거리", f"{scenario['pair']['distance_km']:.2f}km")
     hero[2].metric("평균 추가 접근거리", f"{access['added_mean_km']:+.2f}km")
-    hero[3].metric("접근성 악화 격자", f"{access['worsened_pct']:.1f}%")
+    hero[3].metric("접근성 악화 격자 비율", f"{access['worsened_pct']:.1f}%")
 
     resource_tab, access_tab = st.tabs(["학교 안 교육자원", "학교 밖 교육접근성"])
     with resource_tab:
         st.markdown("#### 선택 시나리오의 교육자원 변화")
-        st.dataframe(resource_comparison_table(resource), hide_index=True, width="stretch")
+        class_cards = st.columns(3)
+        class_cards[0].metric("수용학교 현재 일반학급", f"{resource['classes_before']:,}학급")
+        class_cards[1].metric("두 학교 현재 일반학급 합", f"{resource['classes_current_sum']:,}학급")
+        class_cards[2].metric(
+            "25명 기준 필요 일반학급",
+            f"{resource['classes_after']:,}학급",
+            delta=f"현재 합 대비 {resource['classes_delta_vs_current_sum']:+d}학급",
+            delta_color="off",
+        )
+        resource_table = resource_comparison_table(resource).rename(columns={"변화": "증감"})
+        st.dataframe(resource_table, hide_index=True, width="stretch")
         st.plotly_chart(resource_change_figure(resource), width="stretch")
         st.caption(
             "각 패널은 서로 다른 단위와 범위를 유지한 통합 전→후 원수치입니다. "
-            "고정자원 가정에 따라 통합 대상학교 학생만 선택한 수용학교로 이동하고, "
-            "수용학교의 학급·교원·교실·교지는 유지합니다."
+            "일반학급은 2025년 4월 학년별 일반학생을 합쳐 25명 기준으로 다시 편성하고, "
+            "교원·교실·교지는 수용학교의 현재 규모를 유지합니다."
         )
         if resource["overcrowded_28_after"] and not resource["overcrowded_28_before"]:
-            st.warning("통합 후 학급당 학생 수가 28명 참고선을 새로 넘습니다.")
+            st.warning("통합 후 일반학급당 학생 수가 28명 과밀 참고선을 새로 넘습니다.")
+
+        st.markdown("#### 25명 기준 학년별 일반학급 재편성")
+        st.dataframe(grade_class_comparison_table(resource), hide_index=True, width="stretch")
+        st.caption(
+            "학년별 필요 일반학급 = 올림((통합 대상학교 일반학생 + 수용학교 일반학생) ÷ 25)입니다. "
+            "특수학급은 별도 편성 규칙이 필요하므로 이 계산에 섞지 않고 현재 규모만 분리해 확인합니다."
+        )
+        if resource["special_students_current_sum"] > 0 or resource["special_classes_current_sum"] > 0:
+            st.info(
+                f"두 학교의 현재 특수학생 {resource['special_students_current_sum']:,}명·특수학급 "
+                f"{resource['special_classes_current_sum']:,}학급은 일반학급 재편성 계산에서 제외했습니다."
+            )
+        if resource["general_classroom_shortage"]:
+            st.warning(
+                f"25명 기준 필요 일반학급이 수용학교 일반교실 {resource['general_classrooms_b']:,}실보다 "
+                f"{resource['general_classroom_gap']:,}개 많습니다. 교실 전환·증설 가능성을 별도로 검토해야 합니다."
+            )
 
         st.markdown("#### 학년별 학생 수 변화")
         st.plotly_chart(grade_structure_figure(bundle.master, a_code, b_code), width="stretch")
-        st.caption("2025년 4월 1일 기준이며, 통합 후 학생 수는 두 학교 학년별 학생 수의 단순 합계입니다.")
+        st.caption(
+            "2025년 4월 1일 기준 전체 학생(일반+특수)의 학년별 단순 합계입니다. "
+            "바로 위 학급 재편성 표는 일반학생만 사용합니다."
+        )
 
         st.markdown("#### 선택한 수용학교의 교육자원 여유는 어느 정도일까?")
         same_a_profile, same_a_size = comparative_resource_profile(
@@ -791,15 +907,18 @@ else:
         access_cols = st.columns(4)
         access_cols[0].metric("현재 평균", f"{access['current_mean_km']:.2f}km")
         access_cols[1].metric("통합 후 평균", f"{access['after_mean_km']:.2f}km")
-        access_cols[2].metric("추가거리 중앙값", f"{access['added_median_km']:+.2f}km")
-        access_cols[3].metric("추가거리 최댓값", f"{access['added_max_km']:+.2f}km")
+        access_cols[2].metric("추가 접근거리 중앙값", f"{access['added_median_km']:+.2f}km")
+        access_cols[3].metric("추가 접근거리 최댓값", f"{access['added_max_km']:+.2f}km")
         st.plotly_chart(accessibility_figure(bundle, grid, a_code, b_code), width="stretch")
         st.caption(f"격자 {access['grid_point_count']}개 · {access['assumption']}")
 
 if not a_pairs.empty:
     with st.expander(f"{a_school[SCHOOL_NAME]}의 모든 후보 수치 비교", expanded=False):
         st.dataframe(scenario_comparison(resource_scenarios, a_code, b_code), hide_index=True, width="stretch")
-        st.caption("● 표시는 현재 선택한 수용학교입니다. 모든 값은 수용학교의 현재 자원을 고정한 통합 후 수치입니다.")
+        st.caption(
+            "● 표시는 현재 선택한 수용학교입니다. 일반학급은 학년별 일반학생을 25명 기준으로 재편성하고, "
+            "교원·교실·교지는 수용학교의 현재 자원을 유지해 계산했습니다."
+        )
 
 with st.expander("부산 전체 현황 EDA", expanded=False):
     render_busan_eda(bundle)
@@ -807,12 +926,33 @@ with st.expander("부산 전체 현황 EDA", expanded=False):
 with st.expander("데이터 기준과 해석 한계", expanded=False):
     st.markdown(
         """
-        - 학교 모집단: 2025년 10월 1일 부산 공립 초등학교 운영 본교
-        - 학생·학급·교원: 2025년 10월 1일
-        - 학년별 학생·교실·교지: 2025년 4월 1일
-        - 통학구역·학교위치: 2026년 3월 20일 공개자료를 2025년 학교 마스터에 조인
-        - 3km는 정책 판정기준이 아니라 POC의 후보 탐색범위
+        #### 데이터 기준
 
-        이 도구는 실제 통폐합 여부를 결정하거나 추천하지 않습니다. 접근성은 학생 거주분포·도로망·통학수단을 반영하지 않은 250m 공간격자 기반 직선거리이며, 실제 결정에는 통학버스, 교원 재배치, 시설 확충, 학생·학부모·지역사회 의견을 추가로 검토해야 합니다.
+        - **학교 모집단·전체 학생·교원:** 2025년 10월 1일 부산 공립 초등학교 운영 본교
+        - **학년별 일반·특수 학생과 학급·교실·교지:** 2025년 4월 1일
+        - **통학구역·학교 위치:** 2026년 3월 20일 공개자료를 2025년 학교 마스터에 결합
+
+        #### 교육자원 지표 읽는 법
+
+        - **통합 전/후:** 통합 전은 수용학교의 현재 상태, 통합 후는 통합 대상학교 학생이 수용학교로 이동한 상태입니다.
+        - **일반학급 수:** 학년별로 두 학교의 일반학생을 합한 뒤 `올림(일반학생 ÷ 25)`하여 합산합니다. 25명은 2025년 부산 초등학교 학생배치지표입니다.
+        - **일반학급당 학생 수:** 4월 일반학생 수를 4월 일반학급 수로 나눕니다. 특수학생·특수학급은 이 계산에서 분리합니다.
+        - **교원 1인당 학생 수:** 10월 전체 학생 수를 수용학교의 10월 교원 현원으로 나눕니다.
+        - **학생/교실·학생 1인당 교지면적:** 10월 전체 학생과 4월 수용학교 시설을 결합한 시설 부담 지표입니다.
+        - 교원·교실·교지는 통합 후에도 수용학교의 현재 규모를 유지한다고 가정합니다. 실제 재배치나 증설을 예측한 값이 아닙니다.
+        - **28명 선:** 과밀학급 참고선이며, 학급을 편성하는 25명 기준이나 통합 적합성 판정선이 아닙니다.
+
+        #### 접근성 지도 읽는 법
+
+        - 각 점은 통합 대상학교의 기존 통학구역 안에 만든 **250m 균일격자**입니다.
+        - 추가 접근거리는 `선택한 수용학교까지 거리 - 현재 학교까지 거리`입니다.
+        - 값이 **음수·파란색**이면 가까워지고, **양수·빨간색**이면 멀어지는 지점입니다.
+        - **3km**는 수용학교 후보 탐색범위이고, **1.5km**는 지도 참고선입니다. 통합 적합성을 판정하는 기준이 아닙니다.
+        - 거리는 도로망·경사·통학수단을 반영하지 않은 학교점 간 또는 격자점 간 **직선거리**입니다.
+        - 모든 격자점을 동일하게 계산하므로 실제 학생 거주분포나 실제 평균 통학거리를 뜻하지 않습니다.
+
+        #### 해석 한계
+
+        이 도구는 실제 통폐합 여부를 결정하거나 학교를 추천하는 모델이 아닙니다. 실제 정책 결정에는 통학버스, 교원 재배치, 교실 전환·시설 확충, 복식·정책학급 예외, 학생·학부모·지역사회 의견을 추가로 검토해야 합니다.
         """
     )
