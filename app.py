@@ -290,12 +290,12 @@ def candidate_map_figure(bundle, a_code: str, a_pairs: pd.DataFrame, b_code: str
                     lat=[b_point.y],
                     mode="markers+text",
                     marker=dict(size=23, color="#1B4965", opacity=1),
-                    text=["B"],
+                    text=[str(b_row["후보학교명"])],
                     textposition="top right",
                     customdata=[[str(b_code)]],
                     hovertext=_candidate_hover(selected),
-                    hovertemplate="%{hovertext}<extra>선택한 B</extra>",
-                    name="선택한 B",
+                    hovertemplate="%{hovertext}<extra>선택한 수용학교</extra>",
+                    name="선택한 수용학교",
                 )
             )
 
@@ -306,12 +306,12 @@ def candidate_map_figure(bundle, a_code: str, a_pairs: pd.DataFrame, b_code: str
             lat=[a_point.y],
             mode="markers+text",
             marker=dict(size=25, color="#D62728", opacity=1),
-            text=["A"],
+            text=[str(a_name)],
             textposition="top left",
             customdata=[[str(a_code)]],
-            hovertext=[f"<b>{a_name}</b><br>폐교 가정 학교 A"],
-            hovertemplate="%{hovertext}<extra>A</extra>",
-            name="폐교 가정 A",
+            hovertext=[f"<b>{a_name}</b><br>통합 대상으로 가정한 학교"],
+            hovertemplate="%{hovertext}<extra>통합 대상학교</extra>",
+            name="통합 대상학교",
         )
     )
     figure.update_layout(
@@ -335,7 +335,7 @@ def add_polygon_boundary(figure: go.Figure, geometry) -> None:
                 y=list(y),
                 mode="lines",
                 line=dict(color="#566573", width=2),
-                name="A 통학구역",
+                name="통합 대상학교 통학구역",
                 hoverinfo="skip",
             )
         )
@@ -348,6 +348,8 @@ def accessibility_figure(bundle, grid, a_code: str, b_code: str) -> go.Figure:
     points = bundle.school_points.set_index(KEDI)
     a_point = points.loc[a_code].geometry
     b_point = points.loc[b_code].geometry
+    names = bundle.master.set_index(KEDI)[SCHOOL_NAME]
+    a_name, b_name = names.loc[a_code], names.loc[b_code]
     figure = go.Figure()
     add_polygon_boundary(figure, zone)
     figure.add_trace(
@@ -378,13 +380,13 @@ def accessibility_figure(bundle, grid, a_code: str, b_code: str) -> go.Figure:
             y=[a_point.y, b_point.y],
             mode="markers+text",
             marker=dict(size=15, color=["#D62728", "#1B4965"], symbol=["x", "star"]),
-            text=["현재 A", "후보 B"],
+            text=[f"현재 {a_name}", f"수용 {b_name}"],
             textposition=["top left", "top right"],
             name="학교",
         )
     )
     figure.update_layout(
-        title="A 통학구역의 접근거리 변화",
+        title="통합 대상학교 통학구역의 접근거리 변화",
         xaxis=dict(visible=False, scaleanchor="y", scaleratio=1),
         yaxis=dict(visible=False),
         legend=dict(orientation="h", y=1.08),
@@ -503,7 +505,7 @@ default_a = list(small_label).index(preferred_a) if preferred_a in small_label e
 control_a, control_b = st.columns(2)
 with control_a:
     a_code = st.selectbox(
-        "통합으로 폐교한다고 가정할 학교 A",
+        "통합 대상으로 가정할 소규모학교",
         options=list(small_label),
         index=default_a,
         format_func=small_label.get,
@@ -529,18 +531,18 @@ b_label = {
 with control_b:
     if candidate_codes:
         b_code = st.selectbox(
-            "통합 후 수용학교 B",
+            "통합 후 학생을 받을 수용학교",
             options=[None, *candidate_codes],
             format_func=lambda code: "지도 또는 목록에서 후보를 선택하세요" if code is None else b_label[code],
             key="b_select",
         )
     else:
-        st.selectbox("통합 후 수용학교 B", options=["선택 가능한 후보가 없습니다"], disabled=True)
+        st.selectbox("통합 후 학생을 받을 수용학교", options=["선택 가능한 후보가 없습니다"], disabled=True)
         b_code = None
 
 a_school = bundle.master.set_index(KEDI).loc[a_code]
 st.caption(
-    f"A학교 현재 학생 {int(a_school[STUDENTS]):,}명 · "
+    f"통합 대상학교 현재 학생 {int(a_school[STUDENTS]):,}명 · "
     f"학급당 {a_school[CLASS_SIZE]:.1f}명 · "
     f"교원 1인당 {a_school['교원1인당학생수_20251001_계산']:.1f}명 · "
     f"3km 후보 {len(a_pairs)}개"
@@ -576,10 +578,10 @@ else:
         if clicked_code in candidate_codes and clicked_code != b_code:
             st.session_state["pending_b"] = clicked_code
             st.rerun()
-    st.caption("지도 점을 클릭하거나 위 B학교 목록에서 후보를 선택하세요. 주황색은 소규모 후보, 파란색은 그 외 후보입니다.")
+    st.caption("지도 점을 클릭하거나 위 수용학교 목록에서 후보를 선택하세요. 주황색은 소규모 후보, 파란색은 그 외 후보입니다.")
 
 if b_code is None:
-    st.info("수용학교 B를 선택하면 교육자원과 교육접근성 변화가 아래에 표시됩니다.")
+    st.info("학생을 받을 수용학교를 선택하면 교육자원과 교육접근성 변화가 아래에 표시됩니다.")
 else:
     scenario, grid = run_scenario(
         bundle.master,
@@ -606,12 +608,13 @@ else:
         st.plotly_chart(resource_change_figure(resource), width="stretch")
         st.caption(
             "각 패널은 서로 다른 단위와 범위를 유지한 통합 전→후 원수치입니다. "
-            "고정자원 가정에 따라 A학생만 B로 이동하고 B의 학급·교원·교실·교지는 유지합니다."
+            "고정자원 가정에 따라 통합 대상학교 학생만 선택한 수용학교로 이동하고, "
+            "수용학교의 학급·교원·교실·교지는 유지합니다."
         )
         if resource["overcrowded_28_after"] and not resource["overcrowded_28_before"]:
             st.warning("통합 후 학급당 학생 수가 28명 참고선을 새로 넘습니다.")
 
-        st.markdown("#### 선택한 B학교의 교육자원 여유는 어느 정도일까?")
+        st.markdown("#### 선택한 수용학교의 교육자원 여유는 어느 정도일까?")
         same_a_profile, same_a_size = comparative_resource_profile(
             resource_scenarios,
             a_code,
@@ -629,7 +632,7 @@ else:
             st.plotly_chart(
                 resource_radar_figure(
                     same_a_profile,
-                    "A학교 주변 3km 수용 후보와 비교",
+                    "통합 대상학교 주변 3km 수용 후보와 비교",
                     same_a_size,
                     resource["b_name"],
                 ),
@@ -646,7 +649,7 @@ else:
                 width="stretch",
             )
         st.caption(
-            "읽는 법: 주황색 선이 바깥쪽일수록 선택한 B학교가 해당 교육자원에서 비교 대상보다 상대적으로 "
+            "읽는 법: 주황색 선이 바깥쪽일수록 선택한 수용학교가 해당 교육자원에서 비교 대상보다 상대적으로 "
             "여유가 있습니다. 점선 50은 비교 대상의 중간 위치입니다. 네 축을 합산한 종합점수나 추천 순위는 아닙니다."
         )
     with access_tab:
@@ -661,7 +664,7 @@ else:
 if not a_pairs.empty:
     with st.expander(f"{a_school[SCHOOL_NAME]}의 모든 후보 수치 비교", expanded=False):
         st.dataframe(scenario_comparison(resource_scenarios, a_code, b_code), hide_index=True, width="stretch")
-        st.caption("● 표시는 현재 선택한 B학교입니다. 모든 값은 B학교의 현재 자원을 고정한 통합 후 수치입니다.")
+        st.caption("● 표시는 현재 선택한 수용학교입니다. 모든 값은 수용학교의 현재 자원을 고정한 통합 후 수치입니다.")
 
 with st.expander("부산 전체 현황 EDA", expanded=False):
     render_busan_eda(bundle)
