@@ -327,42 +327,68 @@ def candidate_map_figure(bundle, a_code: str, a_pairs: pd.DataFrame, b_code: str
 
 def add_polygon_boundary(figure: go.Figure, geometry) -> None:
     polygons = list(geometry.geoms) if geometry.geom_type == "MultiPolygon" else [geometry]
-    for polygon in polygons:
-        x, y = polygon.exterior.xy
+    for index, polygon in enumerate(polygons):
+        lon, lat = polygon.exterior.xy
         figure.add_trace(
-            go.Scatter(
-                x=list(x),
-                y=list(y),
+            go.Scattermap(
+                lon=list(lon),
+                lat=list(lat),
                 mode="lines",
+                fill="toself",
+                fillcolor="rgba(86, 101, 115, 0.08)",
                 line=dict(color="#566573", width=2),
                 name="통합 대상학교 통학구역",
                 hoverinfo="skip",
+                showlegend=index == 0,
             )
         )
+
+
+def _accessibility_map_zoom(west: float, south: float, east: float, north: float) -> float:
+    """부산 위도대에서 통학구역과 두 학교가 함께 보이도록 대략적인 확대값을 정한다."""
+    horizontal_km = max(0.0, east - west) * 91.0
+    vertical_km = max(0.0, north - south) * 111.0
+    span_km = max(horizontal_km, vertical_km)
+    if span_km < 0.8:
+        return 14.5
+    if span_km < 1.5:
+        return 13.8
+    if span_km < 2.5:
+        return 13.2
+    if span_km < 4.0:
+        return 12.5
+    if span_km < 6.0:
+        return 11.8
+    return 11.0
 
 
 def accessibility_figure(bundle, grid, a_code: str, b_code: str) -> go.Figure:
     zone = bundle.catchments.set_index(KEDI).loc[a_code].geometry
     if isinstance(zone, pd.Series):
         zone = zone.iloc[0]
-    points = bundle.school_points.set_index(KEDI)
+    zone_wgs84 = gpd.GeoSeries([zone], crs=bundle.catchments.crs).to_crs(4326).iloc[0]
+    grid_wgs84 = grid.to_crs(4326)
+    points = bundle.school_points.to_crs(4326).set_index(KEDI)
     a_point = points.loc[a_code].geometry
     b_point = points.loc[b_code].geometry
+    if isinstance(a_point, pd.Series):
+        a_point = a_point.iloc[0]
+    if isinstance(b_point, pd.Series):
+        b_point = b_point.iloc[0]
     names = bundle.master.set_index(KEDI)[SCHOOL_NAME]
     a_name, b_name = names.loc[a_code], names.loc[b_code]
     figure = go.Figure()
-    add_polygon_boundary(figure, zone)
+    add_polygon_boundary(figure, zone_wgs84)
     figure.add_trace(
-        go.Scatter(
-            x=grid.geometry.x,
-            y=grid.geometry.y,
+        go.Scattermap(
+            lon=grid_wgs84.geometry.x,
+            lat=grid_wgs84.geometry.y,
             mode="markers",
             marker=dict(
                 size=9,
                 color=grid["추가접근거리_km"],
                 colorscale="RdYlBu_r",
                 colorbar=dict(title="추가거리<br>(km)"),
-                line=dict(width=0.5, color="white"),
             ),
             text=[
                 f"현재 {current:.2f}km<br>통합 후 {after:.2f}km<br>변화 {added:+.2f}km"
@@ -375,23 +401,43 @@ def accessibility_figure(bundle, grid, a_code: str, b_code: str) -> go.Figure:
         )
     )
     figure.add_trace(
-        go.Scatter(
-            x=[a_point.x, b_point.x],
-            y=[a_point.y, b_point.y],
+        go.Scattermap(
+            lon=[a_point.x],
+            lat=[a_point.y],
             mode="markers+text",
-            marker=dict(size=15, color=["#D62728", "#1B4965"], symbol=["x", "star"]),
-            text=[f"현재 {a_name}", f"수용 {b_name}"],
-            textposition=["top left", "top right"],
-            name="학교",
+            marker=dict(size=20, color="#D62728"),
+            text=[f"통합 대상 {a_name}"],
+            textposition="top right",
+            hovertemplate=f"<b>{a_name}</b><br>통합 대상학교<extra></extra>",
+            name="통합 대상학교",
         )
     )
+    figure.add_trace(
+        go.Scattermap(
+            lon=[b_point.x],
+            lat=[b_point.y],
+            mode="markers+text",
+            marker=dict(size=20, color="#1B4965"),
+            text=[f"수용 {b_name}"],
+            textposition="top left",
+            hovertemplate=f"<b>{b_name}</b><br>선택한 수용학교<extra></extra>",
+            name="선택한 수용학교",
+        )
+    )
+    west, south, east, north = zone_wgs84.bounds
+    west, east = min(west, a_point.x, b_point.x), max(east, a_point.x, b_point.x)
+    south, north = min(south, a_point.y, b_point.y), max(north, a_point.y, b_point.y)
     figure.update_layout(
-        title="통합 대상학교 통학구역의 접근거리 변화",
-        xaxis=dict(visible=False, scaleanchor="y", scaleratio=1),
-        yaxis=dict(visible=False),
-        legend=dict(orientation="h", y=1.08),
-        margin=dict(l=10, r=10, t=70, b=10),
-        height=500,
+        title="통학 접근성 변화",
+        map=dict(
+            style="carto-positron",
+            center=dict(lon=(west + east) / 2, lat=(south + north) / 2),
+            zoom=_accessibility_map_zoom(west, south, east, north),
+        ),
+        legend=dict(orientation="h", y=1.04, x=0),
+        margin=dict(l=0, r=0, t=65, b=0),
+        height=560,
+        uirevision=f"access-{a_code}-{b_code}",
     )
     return figure
 
