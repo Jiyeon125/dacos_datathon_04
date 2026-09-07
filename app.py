@@ -871,6 +871,12 @@ st.caption(
     f"소규모 분석대상 {counts['small_public_schools']}개교 · "
     f"3km 후보 시나리오 {counts['candidate_pairs_3km']:,}건"
 )
+show_detailed_analysis = st.toggle(
+    "상세 분석 전체 펼치기",
+    value=False,
+    key="show_detailed_analysis",
+    help="끄면 학교 선택·후보 지도·추천순위·핵심 결과만 표시합니다.",
+)
 
 gis_codes = set(bundle.school_points[KEDI])
 small_options = bundle.small_schools[[KEDI, SCHOOL_NAME, DISTRICT, STUDENTS]].copy()
@@ -964,7 +970,7 @@ st.caption(
     f"3km 후보 {len(a_pairs)}개"
 )
 
-if a_code in gis_codes:
+if a_code in gis_codes and show_detailed_analysis:
     within_1_5 = int(a_pairs["학교간직선거리_km"].le(1.5).sum())
     between_1_5_and_3 = int(a_pairs["학교간직선거리_km"].gt(1.5).sum())
     small_candidates = int(a_pairs["후보학교_소규모여부_정책2026"].fillna(False).sum())
@@ -1042,6 +1048,13 @@ else:
     hero[1].metric("학교 간 직선거리", f"{scenario['pair']['distance_km']:.2f}km")
     hero[2].metric("평균 추가 접근거리", f"{access['added_mean_km']:+.2f}km")
     hero[3].metric("접근성 악화 표본 비율", f"{access['worsened_pct']:.1f}%")
+
+    if not show_detailed_analysis:
+        st.info(
+            "현재는 핵심 결과만 표시하고 있습니다. 상단의 ‘상세 분석 전체 펼치기’를 켜면 "
+            "교육자원·학급·교원·학년·스타차트·접근성 지도를 모두 볼 수 있습니다."
+        )
+        st.stop()
 
     resource_tab, access_tab = st.tabs(["학교 안 교육자원", "학교 밖 교육접근성"])
     with resource_tab:
