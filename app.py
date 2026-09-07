@@ -871,12 +871,6 @@ st.caption(
     f"소규모 분석대상 {counts['small_public_schools']}개교 · "
     f"3km 후보 시나리오 {counts['candidate_pairs_3km']:,}건"
 )
-show_detailed_analysis = st.toggle(
-    "상세 분석 전체 펼치기",
-    value=False,
-    key="show_detailed_analysis",
-    help="끄면 학교 선택·후보 지도·추천순위·핵심 결과만 표시합니다.",
-)
 
 gis_codes = set(bundle.school_points[KEDI])
 small_options = bundle.small_schools[[KEDI, SCHOOL_NAME, DISTRICT, STUDENTS]].copy()
@@ -970,15 +964,16 @@ st.caption(
     f"3km 후보 {len(a_pairs)}개"
 )
 
-if a_code in gis_codes and show_detailed_analysis:
+if a_code in gis_codes:
     within_1_5 = int(a_pairs["학교간직선거리_km"].le(1.5).sum())
     between_1_5_and_3 = int(a_pairs["학교간직선거리_km"].gt(1.5).sum())
     small_candidates = int(a_pairs["후보학교_소규모여부_정책2026"].fillna(False).sum())
-    candidate_summary = st.columns(4)
-    candidate_summary[0].metric("3km 이내 후보", f"{len(a_pairs):,}개", help="학교점 직선거리 3km 이내의 전체 후보학교 수")
-    candidate_summary[1].metric("1.5km 이내", f"{within_1_5:,}개", help="후보 중 학교점 직선거리 1.5km 이내인 학교 수")
-    candidate_summary[2].metric("1.5~3km", f"{between_1_5_and_3:,}개", help="후보 중 1.5km 초과 3km 이내인 학교 수")
-    candidate_summary[3].metric("소규모 후보학교", f"{small_candidates:,}개", help="3km 후보 중 소규모학교 분석기준에 해당하는 학교 수")
+    with st.expander("후보 범위 요약", expanded=False):
+        candidate_summary = st.columns(4)
+        candidate_summary[0].metric("3km 이내 후보", f"{len(a_pairs):,}개", help="학교점 직선거리 3km 이내의 전체 후보학교 수")
+        candidate_summary[1].metric("1.5km 이내", f"{within_1_5:,}개", help="후보 중 학교점 직선거리 1.5km 이내인 학교 수")
+        candidate_summary[2].metric("1.5~3km", f"{between_1_5_and_3:,}개", help="후보 중 1.5km 초과 3km 이내인 학교 수")
+        candidate_summary[3].metric("소규모 후보학교", f"{small_candidates:,}개", help="3km 후보 중 소규모학교 분석기준에 해당하는 학교 수")
 
 if a_code not in gis_codes:
     excluded = bundle.excluded_schools.loc[bundle.excluded_schools[KEDI].eq(a_code)]
@@ -1049,132 +1044,126 @@ else:
     hero[2].metric("평균 추가 접근거리", f"{access['added_mean_km']:+.2f}km")
     hero[3].metric("접근성 악화 표본 비율", f"{access['worsened_pct']:.1f}%")
 
-    if not show_detailed_analysis:
-        st.info(
-            "현재는 핵심 결과만 표시하고 있습니다. 상단의 ‘상세 분석 전체 펼치기’를 켜면 "
-            "교육자원·학급·교원·학년·스타차트·접근성 지도를 모두 볼 수 있습니다."
-        )
-        st.stop()
-
     resource_tab, access_tab = st.tabs(["학교 안 교육자원", "학교 밖 교육접근성"])
     with resource_tab:
-        st.markdown("#### 선택 시나리오의 교육자원 변화")
-        class_cards = st.columns(3)
-        class_cards[0].metric("수용학교 현재 일반학급", f"{resource['classes_before']:,}학급")
-        class_cards[1].metric("두 학교 현재 일반학급 합", f"{resource['classes_current_sum']:,}학급")
-        class_cards[2].metric(
-            "25명 기준 필요 일반학급",
-            f"{resource['classes_after']:,}학급",
-            delta=f"현재 합 대비 {resource['classes_delta_vs_current_sum']:+d}학급",
-            delta_color="off",
-        )
-        resource_table = resource_comparison_table(resource).rename(columns={"변화": "증감"})
-        st.dataframe(resource_table, hide_index=True, width="stretch")
-        st.plotly_chart(resource_change_figure(resource), width="stretch")
-        st.caption(
-            "각 패널은 서로 다른 단위와 범위를 유지한 통합 전→후 원수치입니다. "
-            "일반학급은 2025년 4월 학년별 일반학생을 합쳐 25명 기준으로 다시 편성하고, "
-            "교원·교실·교지는 수용학교의 현재 규모를 유지합니다."
-        )
-        if resource["overcrowded_28_after"] and not resource["overcrowded_28_before"]:
-            st.warning("통합 후 일반학급당 학생 수가 28명 과밀 참고선을 새로 넘습니다.")
-
-        st.markdown("#### 25명 기준 학년별 일반학급 재편성")
-        st.dataframe(grade_class_comparison_table(resource), hide_index=True, width="stretch")
-        st.caption(
-            "학년별 필요 일반학급 = 올림((통합 대상학교 일반학생 + 수용학교 일반학생) ÷ 25)입니다. "
-            "특수학급은 별도 편성 규칙이 필요하므로 이 계산에 섞지 않고 현재 규모만 분리해 확인합니다."
-        )
-        if resource["special_students_current_sum"] > 0 or resource["special_classes_current_sum"] > 0:
-            st.info(
-                f"두 학교의 현재 특수학생 {resource['special_students_current_sum']:,}명·특수학급 "
-                f"{resource['special_classes_current_sum']:,}학급은 일반학급 재편성 계산에서 제외했습니다."
+        with st.expander("교육자원 전→후 변화", expanded=True):
+            class_cards = st.columns(3)
+            class_cards[0].metric("수용학교 현재 일반학급", f"{resource['classes_before']:,}학급")
+            class_cards[1].metric("두 학교 현재 일반학급 합", f"{resource['classes_current_sum']:,}학급")
+            class_cards[2].metric(
+                "25명 기준 필요 일반학급",
+                f"{resource['classes_after']:,}학급",
+                delta=f"현재 합 대비 {resource['classes_delta_vs_current_sum']:+d}학급",
+                delta_color="off",
             )
-        if resource["general_classroom_shortage"]:
-            st.warning(
-                f"25명 기준 필요 일반학급이 수용학교 일반교실 {resource['general_classrooms_b']:,}실보다 "
-                f"{resource['general_classroom_gap']:,}개 많습니다. 교실 전환·증설 가능성을 별도로 검토해야 합니다."
+            resource_table = resource_comparison_table(resource).rename(columns={"변화": "증감"})
+            st.dataframe(resource_table, hide_index=True, width="stretch")
+            st.plotly_chart(resource_change_figure(resource), width="stretch")
+            st.caption(
+                "각 패널은 서로 다른 단위와 범위를 유지한 통합 전→후 원수치입니다. "
+                "일반학급은 2025년 4월 학년별 일반학생을 합쳐 25명 기준으로 다시 편성하고, "
+                "교원·교실·교지는 수용학교의 현재 규모를 유지합니다."
+            )
+            if resource["overcrowded_28_after"] and not resource["overcrowded_28_before"]:
+                st.warning("통합 후 일반학급당 학생 수가 28명 과밀 참고선을 새로 넘습니다.")
+
+        with st.expander("25명 기준 학년별 일반학급 재편성", expanded=False):
+            st.dataframe(grade_class_comparison_table(resource), hide_index=True, width="stretch")
+            st.caption(
+                "학년별 필요 일반학급 = 올림((통합 대상학교 일반학생 + 수용학교 일반학생) ÷ 25)입니다. "
+                "특수학급은 별도 편성 규칙이 필요하므로 이 계산에 섞지 않고 현재 규모만 분리해 확인합니다."
+            )
+            if resource["special_students_current_sum"] > 0 or resource["special_classes_current_sum"] > 0:
+                st.info(
+                    f"두 학교의 현재 특수학생 {resource['special_students_current_sum']:,}명·특수학급 "
+                    f"{resource['special_classes_current_sum']:,}학급은 일반학급 재편성 계산에서 제외했습니다."
+                )
+            if resource["general_classroom_shortage"]:
+                st.warning(
+                    f"25명 기준 필요 일반학급이 수용학교 일반교실 {resource['general_classrooms_b']:,}실보다 "
+                    f"{resource['general_classroom_gap']:,}개 많습니다. 교실 전환·증설 가능성을 별도로 검토해야 합니다."
+                )
+
+        with st.expander("교원 현원과 회귀 참고값", expanded=False):
+            teacher_cards = st.columns(4)
+            teacher_cards[0].metric("수용학교 현재 교원", f"{resource['teacher_current_b']:,}명")
+            teacher_cards[1].metric("두 학교 현재 교원 합", f"{resource['teacher_current_sum']:,}명")
+            teacher_cards[2].metric(
+                "회귀모델 참고값",
+                f"{resource['teacher_reference_estimate']:.1f}명",
+                delta=f"수용학교 현재 대비 {resource['teacher_reference_delta_vs_b']:+.1f}명",
+                delta_color="off",
+            )
+            teacher_cards[3].metric(
+                "관측자료 참고범위",
+                f"{resource['teacher_reference_range_low']:.1f}~{resource['teacher_reference_range_high']:.1f}명",
+            )
+            st.plotly_chart(teacher_reference_figure(resource), width="stretch")
+            st.caption(
+                f"회귀 입력은 재편성 일반학급 {resource['classes_after']:,}학급 + 두 학교 현재 특수학급 "
+                f"{resource['special_classes_current_sum']:,}학급 = 총 {resource['teacher_model_input_classes']:,}학급입니다. "
+                f"2025년 부산 공립 운영 본교 초등학교 {resource['teacher_reference_training_school_count']:,}개 관측값에서 "
+                f"학급 수만으로 계산했으며, 반복 교차검증 평균 오차는 {resource['teacher_reference_validation_mae']:.2f}명입니다. "
+                "오렌지 오차막대는 관측 잔차의 10~90백분위 범위입니다. 공식 정원이나 통합 후 확정 인원이 아닙니다."
             )
 
-        st.markdown("#### 교원 현원과 회귀 참고값")
-        teacher_cards = st.columns(4)
-        teacher_cards[0].metric("수용학교 현재 교원", f"{resource['teacher_current_b']:,}명")
-        teacher_cards[1].metric("두 학교 현재 교원 합", f"{resource['teacher_current_sum']:,}명")
-        teacher_cards[2].metric(
-            "회귀모델 참고값",
-            f"{resource['teacher_reference_estimate']:.1f}명",
-            delta=f"수용학교 현재 대비 {resource['teacher_reference_delta_vs_b']:+.1f}명",
-            delta_color="off",
-        )
-        teacher_cards[3].metric(
-            "관측자료 참고범위",
-            f"{resource['teacher_reference_range_low']:.1f}~{resource['teacher_reference_range_high']:.1f}명",
-        )
-        st.plotly_chart(teacher_reference_figure(resource), width="stretch")
-        st.caption(
-            f"회귀 입력은 재편성 일반학급 {resource['classes_after']:,}학급 + 두 학교 현재 특수학급 "
-            f"{resource['special_classes_current_sum']:,}학급 = 총 {resource['teacher_model_input_classes']:,}학급입니다. "
-            f"2025년 부산 공립 운영 본교 초등학교 {resource['teacher_reference_training_school_count']:,}개 관측값에서 "
-            f"학급 수만으로 계산했으며, 반복 교차검증 평균 오차는 {resource['teacher_reference_validation_mae']:.2f}명입니다. "
-            "오렌지 오차막대는 관측 잔차의 10~90백분위 범위입니다. 공식 정원이나 통합 후 확정 인원이 아닙니다."
-        )
-
-        st.markdown("#### 학년별 학생 수 변화")
-        st.plotly_chart(grade_structure_figure(bundle.master, a_code, b_code), width="stretch")
-        st.caption(
-            "2025년 4월 1일 기준 전체 학생(일반+특수)의 학년별 단순 합계입니다. "
-            "바로 위 학급 재편성 표는 일반학생만 사용합니다."
-        )
-
-        st.markdown("#### 선택한 수용학교의 교육자원 여유는 어느 정도일까?")
-        same_a_profile, same_a_size = comparative_resource_profile(
-            resource_scenarios,
-            a_code,
-            b_code,
-            same_a_only=True,
-        )
-        all_profile, all_size = comparative_resource_profile(
-            resource_scenarios,
-            a_code,
-            b_code,
-            same_a_only=False,
-        )
-        radar_left, radar_right = st.columns(2)
-        with radar_left:
-            st.plotly_chart(
-                resource_radar_figure(
-                    same_a_profile,
-                    "통합 대상학교 주변 3km 수용 후보와 비교",
-                    same_a_size,
-                    resource["b_name"],
-                ),
-                width="stretch",
+        with st.expander("학년별 학생 수 변화", expanded=False):
+            st.plotly_chart(grade_structure_figure(bundle.master, a_code, b_code), width="stretch")
+            st.caption(
+                "2025년 4월 1일 기준 전체 학생(일반+특수)의 학년별 단순 합계입니다. "
+                "바로 위 학급 재편성 표는 일반학생만 사용합니다."
             )
-        with radar_right:
-            st.plotly_chart(
-                resource_radar_figure(
-                    all_profile,
-                    "부산 전체 통합 시나리오와 비교",
-                    all_size,
-                    resource["b_name"],
-                ),
-                width="stretch",
+
+        with st.expander("교육자원 상대비교", expanded=False):
+            same_a_profile, same_a_size = comparative_resource_profile(
+                resource_scenarios,
+                a_code,
+                b_code,
+                same_a_only=True,
             )
-        st.caption(
-            "읽는 법: 주황색 선이 바깥쪽일수록 선택한 수용학교가 해당 교육자원에서 비교 대상보다 상대적으로 "
-            "여유가 있습니다. 점선 50은 비교 대상의 중간 위치입니다. 네 축을 합산한 종합점수나 추천 순위는 아닙니다."
-        )
+            all_profile, all_size = comparative_resource_profile(
+                resource_scenarios,
+                a_code,
+                b_code,
+                same_a_only=False,
+            )
+            radar_left, radar_right = st.columns(2)
+            with radar_left:
+                st.plotly_chart(
+                    resource_radar_figure(
+                        same_a_profile,
+                        "통합 대상학교 주변 3km 수용 후보와 비교",
+                        same_a_size,
+                        resource["b_name"],
+                    ),
+                    width="stretch",
+                )
+            with radar_right:
+                st.plotly_chart(
+                    resource_radar_figure(
+                        all_profile,
+                        "부산 전체 통합 시나리오와 비교",
+                        all_size,
+                        resource["b_name"],
+                    ),
+                    width="stretch",
+                )
+            st.caption(
+                "읽는 법: 주황색 선이 바깥쪽일수록 선택한 수용학교가 해당 교육자원에서 비교 대상보다 상대적으로 "
+                "여유가 있습니다. 점선 50은 비교 대상의 중간 위치입니다. 네 축을 합산한 종합점수나 추천 순위는 아닙니다."
+            )
     with access_tab:
-        access_cols = st.columns(4)
-        access_cols[0].metric("현재 평균", f"{access['current_mean_km']:.2f}km")
-        access_cols[1].metric("통합 후 평균", f"{access['after_mean_km']:.2f}km")
-        access_cols[2].metric("추가 접근거리 중앙값", f"{access['added_median_km']:+.2f}km")
-        access_cols[3].metric("추가 접근거리 최댓값", f"{access['added_max_km']:+.2f}km")
-        st.plotly_chart(accessibility_figure(bundle, grid, a_code, b_code), width="stretch")
-        st.caption(
-            f"지도 표본 {access['sample_point_count']:,}개 · 몬테카를로 {access['iterations']:,}회 반복 · "
-            f"총 {access['total_draw_count']:,}개 가상점 계산 · {access['assumption']}"
-        )
+        with st.expander("교육접근성 변화", expanded=True):
+            access_cols = st.columns(4)
+            access_cols[0].metric("현재 평균", f"{access['current_mean_km']:.2f}km")
+            access_cols[1].metric("통합 후 평균", f"{access['after_mean_km']:.2f}km")
+            access_cols[2].metric("추가 접근거리 중앙값", f"{access['added_median_km']:+.2f}km")
+            access_cols[3].metric("추가 접근거리 최댓값", f"{access['added_max_km']:+.2f}km")
+            st.plotly_chart(accessibility_figure(bundle, grid, a_code, b_code), width="stretch")
+            st.caption(
+                f"지도 표본 {access['sample_point_count']:,}개 · 몬테카를로 {access['iterations']:,}회 반복 · "
+                f"총 {access['total_draw_count']:,}개 가상점 계산 · {access['assumption']}"
+            )
 
 if not a_pairs.empty:
     with st.expander(f"{a_school[SCHOOL_NAME]}의 모든 후보 수치 비교", expanded=False):

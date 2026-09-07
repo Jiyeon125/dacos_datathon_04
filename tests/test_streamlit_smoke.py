@@ -17,8 +17,6 @@ def test_streamlit_default_scenario_renders_without_exception():
     assert len(app.selectbox[0].options) == 92
     assert app.selectbox[0].value == "213021106"
     assert app.selectbox[1].value is None
-    assert len(app.toggle) == 1
-    assert app.toggle[0].value is False
     assert any("통합 시나리오 추천 순위" in item.value for item in app.markdown)
     assert any("추천 1순위" in item.value for item in app.markdown)
     assert len(app.button) >= 3
@@ -26,13 +24,20 @@ def test_streamlit_default_scenario_renders_without_exception():
     assert not app.exception
     assert app.selectbox[1].value is not None
     assert "→" in app.subheader[0].value
-    assert any("현재는 핵심 결과만 표시" in item.value for item in app.info)
     app.selectbox[1].set_value("213021124").run(timeout=30)
     assert not app.exception
     assert "가남초등학교 → 가야초등학교" in app.subheader[0].value
-    app.toggle[0].set_value(True).run(timeout=30)
-    assert not app.exception
-    assert any("선택한 수용학교의 교육자원 여유" in item.value for item in app.markdown)
+    expander_labels = {item.label for item in app.expander}
+    assert {
+        "후보 범위 요약",
+        "교육자원 전→후 변화",
+        "25명 기준 학년별 일반학급 재편성",
+        "교원 현원과 회귀 참고값",
+        "학년별 학생 수 변화",
+        "교육자원 상대비교",
+        "교육접근성 변화",
+    }.issubset(expander_labels)
+    assert len(app.toggle) == 0
 
 
 def test_streamlit_no_candidate_school_has_explicit_empty_state():
