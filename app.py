@@ -15,6 +15,7 @@ from src.config import PROCESSED_DIR
 from src.data_loader import load_bundle
 from src.resource_benchmark import build_resource_scenario_table, comparative_resource_profile
 from src.resource_simulator import grade_class_comparison_table, resource_comparison_table
+from src.scenario_ranking import build_priority_ranking
 from src.scenario_engine import run_scenario
 from src.schema import CLASS_SIZE, DISTRICT, KEDI, SCHOOL_NAME, SMALL_FLAG, STUDENTS
 from src.teacher_model import TEACHER_REFERENCE_MODEL
@@ -65,6 +66,11 @@ def format_number(value, digits: int = 1, suffix: str = "") -> str:
 def reset_receiver_selection() -> None:
     st.session_state.pop("b_select", None)
     st.session_state.pop("pending_b", None)
+
+
+def select_priority_candidate(code: str) -> None:
+    st.session_state["pending_b"] = str(code)
+    st.session_state.pop("b_select", None)
 
 
 def grade_structure_figure(master: pd.DataFrame, a_code: str, b_code: str) -> go.Figure:
@@ -700,6 +706,114 @@ def scenario_comparison(resource_scenarios: pd.DataFrame, a_code: str, b_code: s
     return comparison[columns].reset_index(drop=True)
 
 
+def priority_comparison_table(ranking: pd.DataFrame) -> pd.DataFrame:
+    table = ranking.copy()
+    table["순위"] = table["review_rank"].map(lambda value: "-" if pd.isna(value) else f"{int(value)}위")
+    table["자원 전 지표 후보중앙 이상"] = table["resource_all_above_median"].map({True: "예", False: "아니오"})
+    table = table.rename(
+        columns={
+            "후보학교명": "수용학교 후보",
+            "priority_label": "분류",
+            "constraint_reason": "기본 확인조건",
+            "학교간직선거리_km": "학교 간 직선거리(km)",
+            "added_mean_km": "평균 추가 접근거리(km)",
+            "added_max_km": "최대 추가 접근거리(km)",
+            "class_size_after": "일반학급당 학생 수(명)",
+            "students_per_teacher_after": "교원 1인당 학생 수(명)",
+            "students_per_classroom_after": "학생/교실(명)",
+            "land_per_student_after": "학생 1인당 교지면적(㎡)",
+            "resource_balance_pct": "자원 최저백분위",
+            "access_balance_pct": "접근성 최저백분위",
+            "balance_score": "균형도",
+        }
+    )
+    columns = [
+        "순위",
+        "수용학교 후보",
+        "분류",
+        "기본 확인조건",
+        "학교 간 직선거리(km)",
+        "평균 추가 접근거리(km)",
+        "최대 추가 접근거리(km)",
+        "일반학급당 학생 수(명)",
+        "교원 1인당 학생 수(명)",
+        "학생/교실(명)",
+        "학생 1인당 교지면적(㎡)",
+        "자원 전 지표 후보중앙 이상",
+        "자원 최저백분위",
+        "접근성 최저백분위",
+        "균형도",
+    ]
+    numeric_columns = columns[4:11] + columns[12:]
+    for column in numeric_columns:
+        table[column] = pd.to_numeric(table[column], errors="coerce").round(2)
+    return table[columns]
+
+
+def render_priority_ranking(ranking: pd.DataFrame, selected_b: str | None) -> None:
+    st.markdown("#### 통합 시나리오 추천 순위")
+    st.caption(
+        "먼저 필요 일반학급이 수용학교 일반교실 수를 넘지 않는 후보를 남기고 28명 과밀 참고선도 확인합니다. "
+        "교육자원 4개와 접근성 2개 중 가장 불리한 지표의 상대 백분위가 높은 후보를 최선안으로 추천하고, "
+        "다른 후보에 모든 지표가 밀리지 않는 파레토 여부도 함께 확인합니다. 임의 가중합은 사용하지 않습니다."
+    )
+    eligible = ranking.loc[ranking["priority_eligible"]].copy()
+    if eligible.empty:
+        st.warning("기본 확인조건을 모두 통과한 후보가 없어 추천 가능한 수용학교가 없습니다.")
+    else:
+        top = eligible.nsmallest(3, "review_rank")
+        cards = st.columns(len(top))
+        for card, (_, row) in zip(cards, top.iterrows()):
+            with card.container(border=True):
+                rank_title = "추천 1순위 · 최선안" if int(row["review_rank"]) == 1 else f"추천 {int(row['review_rank'])}순위"
+                st.markdown(f"### {rank_title}")
+                st.markdown(f"**{row['후보학교명']}**")
+                st.caption(str(row["priority_label"]))
+                metric_left, metric_right = st.columns(2)
+                metric_left.metric("평균 추가 접근", f"{row['added_mean_km']:+.2f}km")
+                metric_right.metric("학급당 학생", f"{row['class_size_after']:.1f}명")
+                st.progress(min(max(float(row["balance_score"]) / 100, 0.0), 1.0))
+                st.caption(
+                    f"균형도 {row['balance_score']:.1f} · 자원 최저 {row['resource_balance_pct']:.1f} · "
+                    f"접근성 최저 {row['access_balance_pct']:.1f}"
+                )
+                st.button(
+                    "추천안 상세보기" if int(row["review_rank"]) == 1 else "대안 상세보기",
+                    key=f"priority_select_{row[PAIR_B_CODE]}",
+                    on_click=select_priority_candidate,
+                    args=(str(row[PAIR_B_CODE]),),
+                    width="stretch",
+                )
+        if selected_b is not None:
+            selected = ranking.loc[ranking[PAIR_B_CODE].astype(str).eq(str(selected_b))]
+            if not selected.empty:
+                row = selected.iloc[0]
+                if bool(row["priority_eligible"]):
+                    st.info(
+                        f"현재 선택한 {row['후보학교명']}은(는) 기본 확인조건 통과 후보 중 "
+                        f"추천 {int(row['review_rank'])}순위입니다."
+                    )
+                else:
+                    st.warning(
+                        f"현재 선택한 {row['후보학교명']}은(는) 추천 순위 산정에서 제외되었습니다: "
+                        f"{row['constraint_reason']}"
+                    )
+    with st.expander("순위 전체표와 산정방법 보기", expanded=False):
+        st.dataframe(priority_comparison_table(ranking), hide_index=True, width="stretch")
+        st.markdown(
+            "- **균형도:** 여섯 지표의 유리한 방향 백분위 중 최솟값입니다. 한 지표의 큰 장점으로 다른 "
+            "지표의 큰 손실을 상쇄하지 않습니다.\n"
+            "- 균형도가 같으면 두 번째로 불리한 지표, 세 번째로 불리한 지표 순서로 비교합니다. "
+            "따라서 동점 처리에도 별도 가중치를 두지 않습니다.\n"
+            "- **파레토 우선후보:** 다른 한 후보가 여섯 지표에서 모두 같거나 더 유리하면서 하나 이상 확실히 "
+            "유리한 경우가 없는 후보입니다. 추천 근거를 추가로 확인하는 표식입니다.\n"
+            "- 교육자원은 일반학급당 학생·교원 1인당 학생·학생/교실은 낮을수록, 학생 1인당 교지면적은 "
+            "높을수록 유리합니다. 접근성은 평균·최대 추가거리가 낮을수록 유리합니다.\n"
+            "- 접근성 악화 표본 비율은 후보 간 값이 같을 수 있어 표에는 남기되 순위에는 사용하지 않습니다. "
+            "회귀 교원 참고값도 공식 배치값이 아니므로 순위에서 제외합니다."
+        )
+
+
 def render_busan_eda(bundle) -> None:
     chart_left, chart_right = st.columns(2)
     with chart_left:
@@ -791,6 +905,7 @@ with control_a:
         help="부산 소규모 공립초등학교 분석대상에서 통합 대상으로 가정할 학교를 선택합니다.",
     )
 
+a_school = bundle.master.set_index(KEDI).loc[a_code]
 a_pairs = bundle.candidate_pairs.loc[bundle.candidate_pairs[PAIR_A_CODE].eq(a_code)].sort_values("학교간직선거리_km").copy()
 candidate_codes = a_pairs[PAIR_B_CODE].astype(str).tolist()
 pending_b = st.session_state.pop("pending_b", None)
@@ -798,6 +913,24 @@ if pending_b in candidate_codes:
     st.session_state["b_select"] = pending_b
 if st.session_state.get("b_select") not in candidate_codes:
     st.session_state["b_select"] = None
+
+accessibility_scenarios = pd.DataFrame()
+accessibility_sample = None
+priority_ranking = pd.DataFrame()
+if a_code in gis_codes and candidate_codes:
+    with st.spinner("후보별 교육자원과 접근성을 비교하고 있습니다..."):
+        accessibility_scenarios, accessibility_sample = get_accessibility_scenarios(
+            a_code,
+            tuple(candidate_codes),
+            int(a_school[STUDENTS]),
+            bundle.catchments,
+            bundle.school_points,
+        )
+        priority_ranking = build_priority_ranking(
+            resource_scenarios,
+            accessibility_scenarios,
+            a_code,
+        )
 
 b_label = {
     row[PAIR_B_CODE]: (
@@ -824,7 +957,6 @@ with control_b:
         )
         b_code = None
 
-a_school = bundle.master.set_index(KEDI).loc[a_code]
 st.caption(
     f"통합 대상학교 현재 학생 {int(a_school[STUDENTS]):,}명 · "
     f"학급당 {a_school[CLASS_SIZE]:.1f}명 · "
@@ -878,17 +1010,15 @@ else:
         "선택 후 표시되는 선은 도로 경로가 아닌 학교 간 직선거리입니다."
     )
 
+if not priority_ranking.empty:
+    render_priority_ranking(priority_ranking, b_code)
+
 if b_code is None:
     st.info("학생을 받을 수용학교를 선택하면 교육자원과 교육접근성 변화가 아래에 표시됩니다.")
 else:
-    candidate_codes = tuple(a_pairs[PAIR_B_CODE].astype(str))
-    accessibility_scenarios, accessibility_sample = get_accessibility_scenarios(
-        a_code,
-        candidate_codes,
-        int(a_school[STUDENTS]),
-        bundle.catchments,
-        bundle.school_points,
-    )
+    if accessibility_sample is None or accessibility_scenarios.empty:
+        st.error("후보별 접근성 계산자료를 만들 수 없습니다.")
+        st.stop()
     selected_accessibility = accessibility_scenarios.loc[
         accessibility_scenarios[PAIR_B_CODE].eq(b_code)
     ].iloc[0].to_dict()
@@ -1075,8 +1205,13 @@ with st.expander("데이터 기준과 해석 한계", expanded=False):
         - 거리는 도로망·경사·통학수단을 반영하지 않은 학교점 간 또는 표본점 간 **직선거리**입니다.
         - 통학구역 내부를 균일하게 표본화하므로 실제 학생 거주분포나 실제 평균 통학거리를 뜻하지 않습니다.
 
+        #### 추천 순위 읽는 법
+
+        - 추천 1순위는 같은 통합 대상학교의 3km 후보 가운데 현재 입력자료와 시뮬레이션 규칙상 가장 균형이 좋은 수용학교입니다.
+        - 필요 일반학급이 수용학교 일반교실 수를 넘지 않는 후보를 우선하고 28명 과밀 참고선을 함께 확인한 뒤, 교육자원 4개와 접근성 2개의 최약 지표 백분위로 정렬하고 파레토 전면을 표시합니다. 회귀 교원 참고값과 접근성 악화 표본 비율은 순위에 넣지 않습니다.
+
         #### 해석 한계
 
-        이 도구는 실제 통폐합 여부를 결정하거나 학교를 추천하는 모델이 아닙니다. 실제 정책 결정에는 통학버스, 교원 재배치, 교실 전환·시설 확충, 복식·정책학급 예외, 학생·학부모·지역사회 의견을 추가로 검토해야 합니다.
+        추천 순위는 현재 입력자료와 시뮬레이션 가정 안에서의 최선안이며, 실제 정책 결정에는 통학버스, 교원 재배치, 교실 전환·시설 확충, 복식·정책학급 예외, 학생·학부모·지역사회 의견을 추가로 검토해야 합니다.
         """
     )

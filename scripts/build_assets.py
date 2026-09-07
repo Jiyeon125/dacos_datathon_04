@@ -57,7 +57,7 @@ def build_manifest(output_dir: Path, row_counts: dict[str, int]) -> dict:
         "source_dates": {"data1": "2025-04-01", "data2": "2025-10-01", "data3": "2025-04-01", "gis": "2026-03-20"},
         "analysis_universe": "2025-10-01 부산 공립 초등학교 운영 본교",
         "candidate_rule": "GIS 조인 가능한 소규모학교 A에서 학교점 직선거리 3km 이하의 다른 초등학교 B",
-        "accessibility_rule": "A 통학구역 250m 균일격자에서 A/B 학교점까지 직선거리 비교",
+        "accessibility_rule": "A 통학구역 안에 재학생 수만큼 균일 무작위 가상점을 반복 생성해 A/B 학교점까지 직선거리 비교",
         "row_counts": row_counts,
         "files": files,
     }

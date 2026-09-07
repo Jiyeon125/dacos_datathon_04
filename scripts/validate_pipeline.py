@@ -3,9 +3,13 @@ from __future__ import annotations
 import argparse
 import math
 
+from src.accessibility_simulator import simulate_accessibility_for_candidates
 from src.data_loader import load_bundle
 from src.candidate_generator import PAIR_A_CODE, PAIR_B_CODE
+from src.resource_benchmark import build_resource_scenario_table
+from src.scenario_ranking import build_priority_ranking
 from src.scenario_engine import run_scenario
+from src.schema import KEDI, SCHOOL_NAME, STUDENTS
 from src.validation import assert_valid_bundle
 
 
@@ -63,6 +67,60 @@ def validate_all_scenarios(bundle) -> None:
     print(f"- 평균 추가 접근거리 범위: {min(added_distances):+.3f} ~ {max(added_distances):+.3f}km")
 
 
+def validate_priority_rankings(bundle) -> None:
+    """대시보드와 같은 반복 가상점 접근성으로 모든 A별 추천순위를 검증한다."""
+    resource_scenarios = build_resource_scenario_table(bundle.master, bundle.candidate_pairs)
+    master_lookup = bundle.master.set_index(KEDI)
+    recommendations = []
+    no_eligible = []
+    unconverged = []
+
+    for a_code, pairs in bundle.candidate_pairs.groupby(PAIR_A_CODE, sort=False):
+        candidate_codes = tuple(pairs[PAIR_B_CODE].astype(str))
+        accessibility, _ = simulate_accessibility_for_candidates(
+            bundle.catchments,
+            bundle.school_points,
+            str(a_code),
+            candidate_codes,
+            int(master_lookup.loc[str(a_code), STUDENTS]),
+        )
+        ranking = build_priority_ranking(resource_scenarios, accessibility, str(a_code))
+        if len(ranking) != len(candidate_codes):
+            raise AssertionError(f"{a_code}: 후보 수와 순위표 행 수가 다릅니다.")
+        if set(ranking[PAIR_B_CODE].astype(str)) != set(candidate_codes):
+            raise AssertionError(f"{a_code}: 순위표의 후보학교 집합이 다릅니다.")
+        if not bool(accessibility["converged"].all()):
+            unconverged.append(str(a_code))
+
+        eligible = ranking.loc[ranking["priority_eligible"]].sort_values("review_rank")
+        if eligible.empty:
+            no_eligible.append(str(a_code))
+            continue
+        expected_ranks = list(range(1, len(eligible) + 1))
+        actual_ranks = eligible["review_rank"].astype(int).tolist()
+        if actual_ranks != expected_ranks:
+            raise AssertionError(f"{a_code}: 추천순위가 연속적이지 않습니다: {actual_ranks}")
+        top = eligible.iloc[0]
+        if int(top["pareto_front"]) != 1:
+            raise AssertionError(f"{a_code}: 추천 1순위가 파레토 1전면이 아닙니다.")
+        if not str(top["priority_label"]).startswith("최선안"):
+            raise AssertionError(f"{a_code}: 추천 1순위 표식이 최선안이 아닙니다.")
+        if float(top["balance_score"]) < float(eligible["balance_score"].max()) - 1e-9:
+            raise AssertionError(f"{a_code}: 추천 1순위가 최고 균형도가 아닙니다.")
+        recommendations.append((str(a_code), str(top[PAIR_B_CODE])))
+
+    if not recommendations:
+        raise AssertionError("추천 가능한 통합 대상학교가 한 곳도 없습니다.")
+    print("\n전체 추천순위 검증 완료")
+    print(f"- 후보가 있는 통합 대상학교: {bundle.candidate_pairs[PAIR_A_CODE].nunique():,}개교")
+    print(f"- 최선안이 산출된 학교: {len(recommendations):,}개교")
+    print(f"- 기본 확인조건 통과 후보가 없는 학교: {len(no_eligible):,}개교")
+    if no_eligible:
+        no_eligible_names = master_lookup.loc[no_eligible, SCHOOL_NAME].astype(str).tolist()
+        print(f"  · 해당 학교: {', '.join(no_eligible_names)}")
+    print(f"- 반복 계산이 최대 횟수까지 진행된 학교: {len(unconverged):,}개교")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="배포 데이터와 대표 시나리오를 검증합니다.")
     parser.add_argument("--all-scenarios", action="store_true", help="1,481개 후보쌍의 교육자원·접근성을 모두 계산")
@@ -103,6 +161,7 @@ def main() -> None:
     print(f"- 접근성 악화 격자: {access['worsened_pct']:.1f}% ({len(grid)}개 격자)")
     if args.all_scenarios:
         validate_all_scenarios(bundle)
+        validate_priority_rankings(bundle)
 
 
 if __name__ == "__main__":

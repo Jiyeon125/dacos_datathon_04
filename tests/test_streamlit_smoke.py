@@ -17,6 +17,13 @@ def test_streamlit_default_scenario_renders_without_exception():
     assert len(app.selectbox[0].options) == 92
     assert app.selectbox[0].value == "213021106"
     assert app.selectbox[1].value is None
+    assert any("통합 시나리오 추천 순위" in item.value for item in app.markdown)
+    assert any("추천 1순위" in item.value for item in app.markdown)
+    assert len(app.button) >= 3
+    app.button[0].click().run(timeout=30)
+    assert not app.exception
+    assert app.selectbox[1].value is not None
+    assert "→" in app.subheader[0].value
     app.selectbox[1].set_value("213021124").run(timeout=30)
     assert not app.exception
     assert "가남초등학교 → 가야초등학교" in app.subheader[0].value

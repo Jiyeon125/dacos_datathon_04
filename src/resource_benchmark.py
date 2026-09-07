@@ -10,6 +10,7 @@ from src.class_formation import GRADES, general_class_column, general_student_co
 from src.config import BUSAN_ELEMENTARY_CLASS_FORMATION_2025
 from src.schema import (
     CLASSROOMS,
+    GENERAL_CLASSROOMS,
     KEDI,
     LAND_AREA,
     SCHOOL_NAME,
@@ -101,6 +102,8 @@ def build_resource_scenario_table(master: pd.DataFrame, candidate_pairs: pd.Data
     b_teachers = pairs[PAIR_B_CODE].map(lookup[TEACHERS])
     a_teachers = pairs[PAIR_A_CODE].map(lookup[TEACHERS])
     b_classrooms = pairs[PAIR_B_CODE].map(lookup[CLASSROOMS])
+    b_general_classrooms = pd.to_numeric(pairs[PAIR_B_CODE].map(lookup[GENERAL_CLASSROOMS]), errors="coerce")
+    general_classroom_gap = classes_after - b_general_classrooms
     b_land = pairs[PAIR_B_CODE].map(lookup[LAND_AREA])
     teacher_model_input_classes = classes_after + special_classes_current_sum
     teacher_reference_estimate = (
@@ -135,6 +138,9 @@ def build_resource_scenario_table(master: pd.DataFrame, candidate_pairs: pd.Data
             "teacher_reference_range_high": (
                 teacher_reference_estimate + TEACHER_REFERENCE_MODEL.residual_q90
             ),
+            "general_classrooms_b": b_general_classrooms,
+            "general_classroom_gap": general_classroom_gap,
+            "general_classroom_shortage": general_classroom_gap.gt(0).where(general_classroom_gap.notna()),
             "students_per_classroom_after": _safe_divide(after_students, b_classrooms),
             "land_per_student_after": _safe_divide(b_land, after_students),
         }

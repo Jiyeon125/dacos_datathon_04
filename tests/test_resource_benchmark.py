@@ -29,6 +29,9 @@ def test_resource_scenario_table_matches_single_scenario_engine():
     assert row["teacher_reference_estimate"] == pytest.approx(single["teacher_reference_estimate"])
     assert row["teacher_reference_range_low"] == pytest.approx(single["teacher_reference_range_low"])
     assert row["teacher_reference_range_high"] == pytest.approx(single["teacher_reference_range_high"])
+    assert row["general_classrooms_b"] == pytest.approx(single["general_classrooms_b"])
+    assert row["general_classroom_gap"] == pytest.approx(single["general_classroom_gap"])
+    assert bool(row["general_classroom_shortage"]) is single["general_classroom_shortage"]
     assert row["students_per_classroom_after"] == pytest.approx(single["students_per_classroom_after"])
     assert row["land_per_student_after"] == pytest.approx(single["land_per_student_after"])
 
